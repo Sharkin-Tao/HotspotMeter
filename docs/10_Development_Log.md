@@ -84,7 +84,20 @@ dotnet new editorconfig
 - `AllowsTransparency` 性能、任务栏定位可行性，留待阶段 4。
 - `App` 目前引用 `Infrastructure` 但未使用其任何类型（组合根尚未实现），不影响构建。
 
-### 7. 下一步
+### 7. 收尾复核
+
+- `dotnet clean` 后重新 `dotnet build`：0 警告 0 错误（1.56 秒）。
+- `dotnet test --no-build`：13/13 通过（42 ms）。
+- `git status` 干净，无 `bin/obj` 入库。
+
+### 8. 提交记录
+
+| 提交 | 说明 |
+| --- | --- |
+| `bce7260` | 初始化解决方案与项目知识库（阶段 0），31 个文件 |
+| `d702a40` | 统一换行规范（`.gitattributes`，工作区 CRLF / 索引 LF） |
+
+### 9. 下一步
 
 等待用户确认阶段 0。确认后按 `docs/08` 进入阶段 1：
 `tools/ApiProbe` 控制台原型 + P1-1～P1-8 验证 + 结论回写 `docs/05`、`docs/09`。
