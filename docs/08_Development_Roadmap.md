@@ -7,8 +7,8 @@
 | 阶段 | 主题 | 状态 |
 | --- | --- | --- |
 | 0 | 项目初始化与知识库 | **已完成（2026-11-12 用户验收通过）** |
-| 1 | Windows API 与技术可行性验证 | **已完成，等待用户确认后进入阶段 2** |
-| 2 | 热点识别与实时流量引擎 | 未开始 |
+| 1 | Windows API 与技术可行性验证 | **已完成（2026-11-12 用户验收通过）** |
+| 2 | 热点识别与实时流量引擎 | **已完成实现（54 项测试通过 + 真机比对），等待用户验收** |
 | 3 | SQLite、会话管理与异常恢复 | 未开始 |
 | 4 | 悬浮状态栏 | 未开始 |
 | 5 | 独立流量统计窗口 | 未开始 |
@@ -54,27 +54,25 @@
 
 ---
 
-## 阶段 2：热点识别与实时流量引擎
+## 阶段 2：热点识别与实时流量引擎（已完成实现，等待用户验收）
 
 **目标**：把阶段 1 的结论落成 Core 接口 + Infrastructure 实现，形成可测试的采样引擎（无 UI）。
 
-**阶段 1 带来的硬约束（必须体现在设计里）**
+**实际做法**
 
-- 行选择只按 GUID；`InterfaceMissing` 是正常状态而不是异常。
-- 会话累计 = Σ 有效 delta；`BaselinePending`（首帧/恢复帧）增量为 0。
-- 状态机至少覆盖 `Running / InterfaceMissing / CounterReset / Suspended / Rebooted`，任一非 `Running` 都重建基线。
-- 计时用 `Stopwatch`；样本同时带 `TimestampUtc` 与 `GapMs`。
-- 对"单帧增量超过链路速率上限"记告警并丢弃该帧。
+1. Core（纯逻辑，无 Windows API）：`HotspotTarget`/`HotspotConnection`/`InterfaceReading` 等模型，`IHotspotDetector`、`ITrafficCounter`、`IMonotonicClock`/`IWallClock`/`IUptimeProvider`、`IConnectionContinuityProvider`、`IMonitorEngine`；`TrafficAccumulator` 负责会话累计与状态机，`BaselineResumeEvaluator` 只做恢复判定与增量计算，`HotspotMatcher` 只做目标匹配。
+2. Infrastructure（平台实现）：`WlanHotspotDetector`、`InterfaceTrafficCounter`、`MonitorEngine`（循环 + 事件 + 恢复幂等）、`SystemClocks`、两组 interop。
+3. 测试：`HotspotMeter.Tests` 用假时钟/假检测器/假计数器覆盖采样、回退、长暂停、断开重连、BSSID 变化、墙钟跳变、恢复六种结局、恢复幂等与并发、疑似增量的告警/丢弃。
+4. 控制台宿主 `tools/MonitorHost`（不入解决方案）：`--list`、`--ssid`、`--guid`、`--seconds`、`--json`，打印每秒快照与结束汇总，供人工比对。
 
-**计划**
+**结果**
 
-1. Core：`HotspotId`/`NetworkInterfaceKey`/`HotspotConnection`/`InterfaceCounters`/`SessionState`，`IHotspotDetector`、`ITrafficCounter`、`IClock`（单调时钟抽象）、`ISessionClock`（墙钟抽象，便于测试跨日）。
-2. Infrastructure：`WlanHotspotDetector`、`InterfaceTrafficCounter`、`MonitorEngine`（`PeriodicTimer` + 状态机 + 异常隔离 + 告警事件）。
-3. 单元测试（用假时钟/假计数器）：计数器回退、接口消失、长暂停、热点切换、单帧异常增量、异常不终止循环、基线两帧确认。
-4. 临时控制台宿主 `tools/MonitorHost`（不入解决方案）打印会话累计与速度，与 Windows"数据使用量"人工比对。
-5. 采样间隔可配置（默认 1000 ms，最小 500 ms）。
+- `dotnet test`：**54/54 通过**（2 s）；`dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- 真机 45 s（其中 60 MB 限额下载）：引擎会话累计 61.6 MB / 715.06 KB，`Get-NetAdapterStatistics` 同窗口计数差 64,637,304 / 746,352 B，差异 <0.1%，来自采样边界与后台流量。
+- 启动时热点已连接：第一帧 `inDelta=0`，会话从 0 开始，不把历史累计值算进会话。
+- 关键语义：会话累计 = Σ 有效 delta；计数回退/长暂停/接口缺失一律重建基线并两帧确认；`ResumeAsync` 只在"同开机 + 同接口 + 计数未回退 + 仍连目标 SSID"时计算 gap，且默认证据源返回 `Unverified`，不自动并入原会话，只发恢复候选事件。
 
-**退出标准**：真实热点下累计与系统数据使用量同量级（差异可解释）；所有异常路径有测试；引擎连续运行 30 分钟无异常退出、无内存增长。
+**退出标准达成情况**：真机累计与系统统计同量级且差异可解释；异常路径均有测试；30 分钟稳定性与内存增长留到阶段 7 的长时间运行测试（本阶段只做了分钟级真机运行），**未验证项不写成已验证**。
 
 ---
 
@@ -166,7 +164,7 @@
 
 ## 当前阻塞/待确认
 
-1. 用户对阶段 1 的验收确认（确认后才进入阶段 2）。
-2. 01 文档第 4 节的 5 个产品问题（会话合并、托盘、默认范围、重置、采样间隔可配置）。
+1. 用户对阶段 2 的验收确认（确认后才进入阶段 3）。
+2. 01 文档第 4 节的 5 个产品问题（会话合并、托盘、默认范围、重置、采样间隔可配置）——其中采样间隔已有默认值 1000 ms / 最小 500 ms，其余仍待定。
 3. 04 文档第 9 节的保留期与导出问题。
 4. `E:\hotspotmeter\HotspotMeter` 旧位置残留目录与 `E:\hotspotmeter-clone-git-backup` 的最终处置（见 `docs/09` D-025）。

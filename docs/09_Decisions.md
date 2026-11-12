@@ -205,3 +205,66 @@
 - 背景：用户把项目从 `E:\HotspotMeter` 移到新位置；原处残留一个无关的克隆仓库（`bd9001a Initial commit`），造成嵌套 `.git`。
 - 决策：把原项目 `.git` 迁入新目录、作为唯一仓库；克隆残留的 `.git` 移到 `E:\hotspotmeter-clone-git-backup` 保留，不直接删除。
 - 影响：所有文档与命令中的路径以 `E:\hotspotmeter\HotspotMeter` 为准；旧路径下的残留目录待用户确认后清理。
+
+## D-026 采样间隔默认 1000 ms，最小 500 ms
+
+- 状态：已决定（阶段 2 实现）
+- 背景：阶段 1 用 1000 ms 验证过稳定性；间隔太小会放大读取开销，也让"两帧确认"失效过快。
+- 决策：`MonitorOptions.SamplingInterval` 默认 1 s，`Validate()` 拒绝 < 500 ms；测试若想加快只能改成 500 ms，不能绕过校验。
+- 影响：引擎测试耗时约 2 s；UI 侧速度显示按 1 s 刷新即可。
+
+## D-027 恢复判定顺序：先判"是否还在目标热点"，再判"计数行是否存在"
+
+- 状态：已决定（阶段 2 实现，测试锁定）
+- 背景：最初先判行缺失，导致"未连任何 Wi-Fi"被误报为 `InterfaceMissing`。
+- 决策：Tick 回退 → 目标匹配失败（NotOnTarget）→ 行缺失（InterfaceMissing）→ LUID 变化 → 计数回退 → 开机偏移 → Continued。
+- 影响：恢复时检测器抛异常（例如网卡被禁用、`WlanQueryInterface` 返回 1168）按 `InterfaceMissing` 处理，不当作"连了别的网络"。
+
+## D-028 Stop 时快照清零，UI 的上次会话数据来自 SessionEnded 事件
+
+- 状态：已决定（阶段 2 实现，阶段 4 使用）
+- 背景：`StopAsync` 会结束会话，`MonitorSnapshot` 随之为 `HasSession=false`、累计 0。
+- 决策：引擎不在快照里保留"上一次会话"；阶段 4 的悬浮窗订阅 `SessionEnded`（含 Download/Upload）保存展示值，并标注"上次会话"。
+- 影响：UI 不能只读当前快照来显示"未连接时的上次流量"；这是刻意保持 Core 语义简单。
+
+## D-029 疑似超限增量默认只告警，不丢弃
+
+- 状态：已决定（阶段 2 实现）
+- 背景：链路速率来自 WLAN 报告值（kbps→bps），与实际吞吐不完全一致；用未标定阈值丢流量会静默少算。
+- 决策：`PlausibilityMode.Warn` 为默认：保留字节并发 `ImplausibleDelta` 告警；`Drop` 必须显式开启，供阶段 7 对照实验；无链路速率时不做上限判断。
+- 影响：告警可能偏多，但不会因为阈值猜错而丢账。
+
+## D-030 状态机在 Core、平台 IO 在 Infrastructure
+
+- 状态：已决定（阶段 2 实现）
+- 背景：需要"假时钟 + 假计数器"就能完整测试所有异常路径。
+- 决策：`TrafficAccumulator`（会话/基线/确认帧/告警）与 `BaselineResumeEvaluator`（纯判定）放 Core；`MonitorEngine`（循环、事件、恢复编排、互斥）放 Infrastructure，只做 IO 与调度。
+- 影响：Core 保持零 Windows 依赖；引擎测试仍需真实 `Task.Delay`（可接受），纯逻辑测试全部无 IO。
+
+## D-031 恢复 gap 只带"连续性可信状态"，默认不自动并入原会话
+
+- 状态：已决定（用户 m00752 要求）
+- 背景：同开机、同接口、计数递增只能证明"读数连续"，不能证明期间没有断开热点、连过别的 Wi-Fi 再连回。
+- 决策：`RecoveryGap.Continuity ∈ {Continuous, Unverified, Interrupted}`；只有 `Continuous` 才 `MayMergeIntoSession` 并触发 `SessionResumed`；否则只发 `RecoveryCandidateDetected`，快照暴露 `HasUnmergedRecovery/UnmergedRecoveryBytes`。
+- 影响：阶段 2 默认证据源恒为 `Unverified`，所以默认行为是"算出候选但不入账"；阶段 3 决定候选如何持久化与展示。
+
+## D-032 恢复幂等：稳定 RecoveryId + 进程内 HashSet + 串行化
+
+- 状态：已决定（用户 m00757 要求）
+- 背景：重复调用 `ResumeAsync`（启动重试、界面重连、并发调用）不得重复并入或重复持久化。
+- 决策：`RecoveryId = {sessionId}:{guid:N}:{utcTicks}:{inOctets}:{outOctets}`；`MonitorEngine` 用 `SemaphoreSlim` 串行化恢复、用 `HashSet<string>` 记录已处理 ID，第二次返回 `AlreadyApplied=true`；阶段 3 再加数据库唯一索引。
+- 影响：ID 包含基线计数，计数器变化后同一会话的另一次恢复会得到不同 ID（这是期望行为，代表不同的恢复窗口）。
+
+## D-033 `tools/MonitorHost` 不入解决方案，但引用产品项目
+
+- 状态：已决定（阶段 2 实现）
+- 背景：需要一个能真机比对的控制台宿主，又不能把原型逻辑复制一遍。
+- 决策：`tools/MonitorHost` 用 `ProjectReference` 引用 Core/Infrastructure，`IsPackable=false`，不加入 `HotspotMeter.sln`；参数 `--list/--ssid/--guid/--seconds/--json`。
+- 影响：`dotnet build HotspotMeter.sln` 不编译它；需要时单独 `dotnet run --project tools/MonitorHost`。
+
+## D-034 引擎循环用 `Task.Delay(剩余时间)`，不用 `PeriodicTimer`
+
+- 状态：已决定（阶段 2 实现）
+- 背景：单次采样耗时（WLAN 查询 + 接口表读取）可能接近或超过间隔；`PeriodicTimer` 在回调变慢时不会补偿，容易积压。
+- 决策：每轮结束后按"间隔 − 本轮耗时"计算延迟，耗时超过间隔则立即进入下一轮；循环整体受 `CancellationToken` 控制。
+- 影响：实际采样周期略大于配置值；速度仍用两次采样的真实单调时间差计算，不会虚高。

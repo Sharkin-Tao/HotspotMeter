@@ -161,3 +161,60 @@ dotnet new editorconfig
 ### 7. 下一步
 
 阶段 1 全部 11 项验证完成，等待用户确认。确认后进入阶段 2：Core 接口 + Infrastructure 采样引擎 + 状态机 + 单元测试（无 UI）。
+
+---
+
+# 阶段 2：热点识别与实时流量引擎（2026-11-12）
+
+### 1. 范围与门禁
+
+用户 m00757 批准计划（含恢复幂等与职责分离两项追加要求）后，按步骤 1→5 小步实施：Core 模型/接口 → 累积器 + 恢复判定 + 单测 → Infrastructure interop → MonitorEngine + 引擎测试 → MonitorHost 真机比对 + 文档。未改 `tools/ApiProbe`，未做 UI/SQLite，无新增第三方依赖。
+
+### 2. 新增文件
+
+| 路径 | 作用 |
+| --- | --- |
+| `HotspotMeter.Core/Models/Network.cs` | 接口/读数/候选/目标/匹配结果 |
+| `HotspotMeter.Core/Models/MonitorState.cs` | 六状态：Stopped/Running/InterfaceMissing/CounterReset/Suspended/Rebooted |
+| `HotspotMeter.Core/Models/MonitorSnapshot.cs` | 17 字段快照（会话累计、速度、gap、确认帧、未并入恢复量） |
+| `HotspotMeter.Core/Models/MonitorEvents.cs` | 会话开始/结束、BSSID、异常、恢复候选 |
+| `HotspotMeter.Core/Models/Recovery.cs` | 基线、恢复上下文、判定结果、gap、连续性、RecoveryId |
+| `HotspotMeter.Core/Models/MonitorFrame.cs` | 单帧输入 + 单步输出 |
+| `HotspotMeter.Core/Abstractions/*` | 检测器/计数器/三种时钟/连续性证据/引擎接口 |
+| `HotspotMeter.Core/Monitoring/MonitorOptions.cs` | 间隔、长暂停倍数、确认帧、合理性模式、开机容差 |
+| `HotspotMeter.Core/Monitoring/TrafficAccumulator.cs` | 会话累计、基线、两帧确认、BSSID、合理性检查、恢复合入 |
+| `HotspotMeter.Core/Monitoring/BaselineResumeEvaluator.cs` | 纯恢复判定与增量计算 |
+| `HotspotMeter.Core/Monitoring/HotspotMatcher.cs` | GUID 主判、SSID 复核 |
+| `HotspotMeter.Core/Monitoring/NoEvidenceContinuityProvider.cs` | 默认证据源：恒 Unverified |
+| `HotspotMeter.Infrastructure/Interop/WlanApi.cs` | WLAN P/Invoke 与映射 |
+| `HotspotMeter.Infrastructure/Interop/IpHlpApi.cs` | GetIfTable2/FreeMibTable 与行读取 |
+| `HotspotMeter.Infrastructure/Monitoring/WlanHotspotDetector.cs` | 热点识别 |
+| `HotspotMeter.Infrastructure/Monitoring/InterfaceTrafficCounter.cs` | 按 GUID 取唯一计数行 |
+| `HotspotMeter.Infrastructure/Monitoring/MonitorEngine.cs` | 采样循环、事件、恢复编排与幂等 |
+| `HotspotMeter.Infrastructure/SystemClocks.cs` | Stopwatch / UTC / TickCount64 |
+| `HotspotMeter.Tests/TestDoubles/*` | 假时钟、假检测器、假计数器、假证据源 |
+| `HotspotMeter.Tests/Unit/Monitoring/*` | 累积器 21 例、恢复判定 11 例、引擎 9 例（合计 54，含原有 13） |
+| `tools/MonitorHost/*` | 控制台宿主（不入解决方案） |
+
+### 3. 测试与真机结果
+
+- `dotnet build HotspotMeter.sln -c Debug`：0 警告 0 错误。
+- `dotnet test HotspotMeter.sln`：**54/54 通过**（2 s）。
+- 真机 45 s（含 60 MB 限额下载）：引擎 61.6 MB / 715.06 KB；`Get-NetAdapterStatistics` 计数差 64,637,304 / 746,352 B；差异 <0.1%，来自采样边界与后台流量。
+- 启动即连接：首帧增量 0，会话从 0 起算，未把历史累计值计入。
+
+### 4. 本轮发现的真实缺陷
+
+1. **恢复判定顺序错误**：先判行缺失导致"未连任何 Wi-Fi"报成 `InterfaceMissing`。修正为"先判目标匹配，再判行缺失"，并让检测异常统一走 `InterfaceMissing`。
+2. **测试绕过配置校验**：引擎测试用 10 ms 间隔，被 `MonitorOptions.Validate()`（最小 500 ms）拒绝。改测试为 500 ms，而不是放宽校验。
+3. **测试期望值笔误**：恢复合并后 upload 期望写成 1050，正确是 550（会话 50 + gap 500）。改测试。
+4. **`HotspotConnection` 是引用类型**：MonitorHost 误写 `connection.Value`（CS1061），去掉 `.Value`。
+
+### 5. 构建与提交
+
+- 提交见本条日志追加的 Git 记录；`tools/MonitorHost` 源码入库，无运行产物。
+- `tools/ApiProbe` 及其历史未改动。
+
+### 6. 下一步（阶段 3，待用户确认）
+
+SQLite 表结构与迁移、检查点写入、会话收尾、`RecoveryCandidate` 的持久化与展示、`DailyTraffic` 聚合与跨午夜拆分。

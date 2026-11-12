@@ -30,23 +30,30 @@ COMMIT;
 
 三者必须原子，否则会出现"会话总量与快照之和不一致"。
 
-## 3. 启动恢复流程
+## 3. 启动恢复流程（阶段 2 已把"能不能恢复"落成代码）
+
+阶段 2 的 `BaselineResumeEvaluator` + `MonitorEngine.ResumeAsync` 定义了判定顺序；阶段 3 只负责把结果与证据写进数据库。
 
 ```
-1. 检查数据库完整性（PRAGMA quick_check）→ 失败则尝试备份/修复流程，绝不直接覆盖
-2. 读取 ConnectionSessions WHERE EndTimeUtc IS NULL
-   a. 存在未结束会话：
-      - 用 LastCheckpointUtc（缺失则用 StartTimeUtc）作为 EndTimeUtc
-      - SessionStatus = Interrupted，IsRecovered = 1
-      - 若 LastCheckpointUtc 为空，把该会话标记为 Abandoned（0 字节，不参与日统计）
-      - 写一条 Kind=Recovered 的快照？不需要：会话已有累计值，快照只用于校验
-   b. 若同一热点存在多条未结束记录（数据损坏）：
-      - 保留 SessionId 最大的一条，其余标记 Abandoned，记录错误日志
-3. 检查 DailyTraffic 与快照/会话是否一致：
-   - 仅校验最近 7 天，发现不一致记录警告并标记"待重算"
-   - 自动重算只允许在最近 7 天内进行（避免启动变慢）
-4. 若当前热点仍连接：创建**新会话**，从当前时刻重新建基线
-   - 上一会话已在第 2 步结束，中间的空档（程序未运行期间）不计入任何会话
+1. (阶段 3) PRAGMA quick_check；失败则备份后尝试修复，绝不直接覆盖
+2. 读取未结束会话与最后有效检查点（BaselineState：GUID/LUID/in/out/UTC/TickCount64/开机近似时刻/SSID）
+3. 调 ResumeAsync，按以下顺序判定：
+   a. TickCount64 变小                  → Rebooted（跨重启禁止相减）
+   b. 当前未连目标 SSID / GUID 不一致   → NotOnTarget
+   c. 计数行不存在                      → InterfaceMissing
+   d. LUID 变化                         → InterfaceChanged
+   e. 计数小于基线                      → CounterReset
+   f. 开机近似时刻偏移 > 10 分钟        → Rebooted（保守，无法区分重启与改时间）
+   g. 以上都不成立                      → Continued，gap = 当前计数 − 基线计数
+4. Continued 只说明"读数看起来连续"，**不等于**期间全程都在目标热点上：
+   - 期间可能断开热点、连别的 Wi-Fi、再连回同名热点，计数器同样单调。
+   - 因此还要问 IConnectionContinuityProvider：
+       Continuous            → 并入原会话（SessionResumed）
+       Unverified/Interrupted → 不自动入账，只发 RecoveryCandidate 事件，
+                                快照置 HasUnmergedRecovery/UnmergedRecoveryBytes
+   - 阶段 2 的默认证据源恒为 Unverified（WLAN API 不提供关联起始时间），见 D-031/D-032。
+5. 幂等：RecoveryId = `{sessionId}:{guid:N}:{utcTicks}:{inOctets}:{outOctets}`；
+   同一 ID 在进程内只处理一次（HashSet + 信号量串行化），阶段 3 再加数据库唯一索引。
 ```
 
 ### 3.1 为什么重启后不会重复累计

@@ -17,14 +17,18 @@
 
 - `ByteSizeFormatterTests`（12 个用例）：0/1/512/1023/1024/1536/KB/MB/GB/TB、1024 进制、负数抛异常。
 
-### 待实现
+### 已完成（阶段 2，共 54 个用例）
+
+- `TrafficAccumulatorTests`（21）：正常采样、首帧 0、计数器回退 + 两帧确认、长暂停（睡眠）、检测器失败只暂停、SSID 变化结束会话、BSSID 变化只告警、接口缺失与恢复、合理性 Warn/Drop/无速率不设限、恢复合入与不合入、墙钟 +2 h 不影响速度。
+- `BaselineResumeEvaluatorTests`（11）：Continued/CounterReset/InterfaceChanged/Rebooted/InterfaceMissing/NotOnTarget 六种结局；开机偏移 10:00 仍 Continued、10:01 判 Rebooted；Tick 回退优先于一切。
+- `MonitorEngineTests`（9）：循环累计并在 Stop 报 EngineStopped、检测器异常发告警、恢复合并、同上下文幂等、并发只处理一次、Unverified 不合并并出候选、Tick 回退拒绝恢复、未连目标、连着其他热点。
+
+### 待实现（阶段 3+）
 
 | 模块 | 用例 |
 | --- | --- |
 | 日边界 | 本地 00:00 前后归属；跨午夜区间按比例拆分且总和不丢字节；夏令时切换日；时区非 UTC |
-| 速度计算 | 正常增量；零增量；超大间隔（睡眠）速度归零；计数器回退不产生负数 |
-| 会话状态机 | 连接→会话；断开→结束；接口消失→结束；切换目标→结束旧会话 |
-| 恢复 | 未结束会话收尾；多条未结束会话时的取舍；Abandoned 不进统计 |
+| 恢复持久化 | 未结束会话收尾；多条未结束会话时的取舍；Abandoned 不进统计；RecoveryCandidate 落库与唯一索引 |
 | 聚合 | 会话次数按开始日；跨日时长拆分；月/周边界 |
 | 设置 | 类型转换、缺省值、损坏值回退 |
 

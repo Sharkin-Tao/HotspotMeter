@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 1 已完成（11 项验证全部通过），等待用户验收确认** |
-| 代码状态 | 解决方案 + 4 个项目骨架；`ByteSizeFormatter` + 13 个测试；验证原型 `tools/ApiProbe/`（不入解决方案） |
-| 未实现 | 正式网络采集服务、SQLite 表结构、会话管理、两个窗口、设置页、开机启动 |
-| 下一次要做的事 | 用户确认阶段 1 后，按 `docs/08` 阶段 2 先给计划（Core 接口 + 采样引擎），再动手 |
+| 当前阶段 | **阶段 2 已完成实现（54 项测试通过 + 真机比对），等待用户验收确认** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
+| 未实现 | SQLite 表结构与持久化、会话收尾与跨日拆分、两个窗口、设置页、开机启动 |
+| 下一次要做的事 | 用户确认阶段 2 后，按 `docs/08` 阶段 3 先给计划（表结构 + 检查点 + 恢复持久化），再动手 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -29,6 +29,14 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - 原型 `tools/ApiProbe/` 真实跑完 P1-1～P1-11，结论与数值见 `docs/05` 第 9 节、日志见 `docs/10`。
 - 三个会直接影响产品的结论：①只能按 InterfaceGuid 取唯一行（按 Type=71 求和是真实值的 6 倍）；②会话流量必须累加 delta（计数器重置后与真实会话差 267,124 B）；③睡眠/接口拆除后必须重建基线并两帧确认（否则会出现约 23 MB 幻影流量）。
 - 项目目录已迁移到 `E:\hotspotmeter\HotspotMeter`（见 `docs/09` D-025）。
+
+### 阶段 2 实际结果（2026-11-12，54/54 测试通过）
+
+- `TrafficAccumulator`：会话累计 = Σ 有效 delta；首帧与长暂停/回退后的两帧确认增量记 0；真断开/SSID 变化才结束会话，接口暂时缺失只暂停。
+- `BaselineResumeEvaluator` + `MonitorEngine.ResumeAsync`：Tick 回退→Rebooted，目标不匹配→NotOnTarget，行缺失→InterfaceMissing，LUID 变化→InterfaceChanged，计数回退→CounterReset，开机偏移 >10 min→Rebooted，否则 Continued 算 gap。
+- 恢复默认**不**自动入账：默认证据源恒 `Unverified`，只发 `RecoveryCandidateDetected` 并在快照暴露 `HasUnmergedRecovery`；只有 `Continuous` 才 `SessionResumed`。
+- 恢复幂等：`RecoveryId` 稳定，进程内 HashSet + 信号量，重复调用返回 `AlreadyApplied=true`。
+- 真机 45 s（60 MB 下载）比对：引擎 61.6 MB/715.06 KB，系统计数差 64,637,304/746,352 B，差异 <0.1%。
 
 ## 3. 文档索引与阅读顺序
 
@@ -59,12 +67,17 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 9. WLAN API 可稳定取得 SSID/BSSID/GUID；`MIB_IF_ROW2.InterfaceGuid` 与之一一对应。`InOctets/OutOctets` 反映真实收发字节（150 MB 下载实测比值 1.0295）。
 10. 结构体布局（x64）：`MIB_IF_ROW2`=1352、`WLAN_CONNECTION_ATTRIBUTES`=604、`WLAN_INTERFACE_INFO`=532。
 11. 测速用 `Stopwatch` 不受墙钟跳变影响；重启可由 `TickCount64` + 开机近似时刻识别。
+12. 引擎行为已被 54 项自动化测试锁定：会话累计=Σ delta、两帧确认、六状态、恢复六种结局、恢复幂等（含并发）、墙钟跳变不影响速度。
+13. 恢复 gap 的连续性默认 `Unverified`：`ResumeAsync` 算出候选但**不**并入原会话，必须由证据源给出 `Continuous` 才合并。
+14. `MonitorEngine` 位于 Infrastructure；Core 不引用 Windows API、WPF、SQLite（靠项目引用方向保证）。
+15. 采样间隔默认 1000 ms、最小 500 ms，`MonitorOptions.Validate()` 强制。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
 | 假设 | 计划验证阶段 |
 | --- | --- |
-| 1000ms 采样间隔下速度显示足够平滑、CPU 占用可接受 | 阶段 2 |
+| 1000ms 采样间隔下速度数字可读；但 UI 上的平滑度与动画效果 | 阶段 2 已验证数字可读，平滑度阶段 4 定 |
+| 引擎连续运行 30 分钟无内存增长/句柄泄漏 | 阶段 7（阶段 2 只做了分钟级真机运行） |
 | `AllowsTransparency=True` + 圆角 Border 在目标机器上性能/命中测试可接受 | 阶段 4 |
 | 能通过任务栏窗口 + UI Automation 稳定定位"开始按钮"附近空位 | 阶段 4 |
 | 通过 `PowerModeChanged`/`SystemEvents` 可靠捕获睡眠唤醒 | 阶段 3/4 |
@@ -89,6 +102,11 @@ dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- selftest
 dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- list
 dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- watch --seconds 30
 dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- continuity --save tools/ApiProbe/out/state.json
+
+# 阶段 2 控制台宿主（独立于解决方案）
+dotnet run --project tools/MonitorHost -- --list
+dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 60
+dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --json
 ```
 
 ## 8. 变更记录
@@ -97,3 +115,4 @@ dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- continuity --s
 | --- | --- |
 | 2026-11-12 | 建立知识库；完成阶段 0（骨架、构建、测试、文档） |
 | 2026-11-12 | 完成阶段 1（11 项 API 验证）；项目迁移到 `E:\hotspotmeter\HotspotMeter`；新增 D-017～D-025 |
+| 2026-11-12 | 完成阶段 2（Core 模型/累积器/恢复判定、Infrastructure 检测器/计数器/引擎、54 项测试、MonitorHost 真机比对）；新增 D-026～D-034 |

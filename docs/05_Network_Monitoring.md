@@ -213,16 +213,17 @@ FreeMibTable(tablePtr);
 9. `dot11PhyType=8` 与 `netsh` 报告的 "802.11ac" 不一致，**UI 不应把 PHY 类型当作权威信息展示**。
 10. 结构体布局：`MIB_IF_ROW2`=1352、`WLAN_CONNECTION_ATTRIBUTES`=604、`WLAN_INTERFACE_INFO`=532（x64），运行时自检不符即退出码 2。
 
-### 9.2 由验证得出的实现约束（阶段 2 必须遵守）
+### 9.2 由验证得出的实现约束（阶段 2 已落实）
 
 - 采样器内部状态机至少需要：`Running` / `InterfaceMissing` / `CounterReset` / `Suspended`（长暂停）/ `Rebooted`；每次进入非 `Running` 都重建基线。
 - 会话累计 = Σ 有效 delta；任何"首帧、恢复帧、唤醒帧"贡献 0。
 - 采样时间差采用单调时钟；样本同时记录 `timestampUtc`（墙钟）与 `gapMs`（单调）。
-- 对"计数器突增但接口状态未变"的情况设置合理性上限（例如超过链路速率的增量）并记录告警，避免幻影数据入库。
+- 合理性上限默认只告警（`PlausibilityMode.Warn`），保留字节；`Drop` 必须显式开启；无链路速率时不设限（见 D-029）。
+- 实现位置：Core 的 `TrafficAccumulator`、`BaselineResumeEvaluator`，Infrastructure 的 `MonitorEngine`；决策见 D-026～D-034。
 
 ## 10. 仍未验证 / 留待后续
 
-1. 连接事件用 1 秒轮询还是 `WlanRegisterNotification` 回调（轮询简单可靠，延迟 ≤1 秒；阶段 2 先轮询）。
+1. 连接事件用 1 秒轮询还是 `WlanRegisterNotification` 回调：阶段 2 已用轮询（简单可靠，延迟 ≤1 秒）；回调留待阶段 6 评估。
 2. 2.4G/5G 频段切换与 BSSID 变化是否需要提示。
 3. 计数器是否包含 802.11 帧头：P1-3 比值 1.0295 说明除了 TCP/IP 头还有额外开销，但具体构成未拆分；口径说明里只承诺"接近系统数据使用量"。
 4. 企业级/隐藏 SSID 热点、多个无线网卡同时存在时的表现（本机只有 1 个 WLAN 接口，未覆盖）。
