@@ -48,12 +48,32 @@ COMMIT;
 4. Continued 只说明"读数看起来连续"，**不等于**期间全程都在目标热点上：
    - 期间可能断开热点、连别的 Wi-Fi、再连回同名热点，计数器同样单调。
    - 因此还要问 IConnectionContinuityProvider：
-       Continuous            → 并入原会话（SessionResumed）
-       Unverified/Interrupted → 不自动入账，只发 RecoveryCandidate 事件，
-                                快照置 HasUnmergedRecovery/UnmergedRecoveryBytes
-   - 阶段 2 的默认证据源恒为 Unverified（WLAN API 不提供关联起始时间），见 D-031/D-032。
-5. 幂等：RecoveryId = `{sessionId}:{guid:N}:{utcTicks}:{inOctets}:{outOctets}`；
-   同一 ID 在进程内只处理一次（HashSet + 信号量串行化），阶段 3 再加数据库唯一索引。
+       Continuous             → 并入原会话，沿用 SessionId，发 SessionResumed
+       Unverified / Interrupted → 切开会话（F-1）：
+                                 旧会话在 gap.FromUtc（最后可信检查点）结束，
+                                 EndReason=RecoveryUnconfirmed，ResumeOutcome=Continued；
+                                 RecoveryGap 只作为独立候选保留，不进入任何会话累计；
+                                 同一 MonitorStep 内以新 SessionId 开新会话（累计 0），发 SessionStarted；
+                                 之后的流量只进入新会话，HasUnmergedRecovery 仍保留。
+   - 阶段 2 的默认证据源恒为 Unverified（WLAN API 不提供关联起始时间），见 D-031/D-032/D-035。
+5. 其余非 Continued 结局（Rebooted / NotOnTarget / CounterReset / InterfaceChanged / InterfaceMissing）
+   同样必须结束旧会话：终点取最后检查点 `Baseline.CapturedAtUtc`，EndReason=RecoveryRejected，
+   ResumeOutcome 记录具体结局；不允许旧会话静默消失。
+6. 单次结束与单调 Id：
+   - `_lastClosedSessionId` 水位保证同一 SessionId 最多一次 SessionEnded（正常结束与恢复结束共用）；
+   - SessionId 严格递增，达到 Int64 上限时抛异常，绝不复用历史 Id；
+   - RecoveryId = `{sessionId}:{guid:N}:{utcTicks}:{inOctets}:{outOctets}`，进程内只处理一次；
+     阶段 3 再加数据库唯一约束。
+
+### 3.1 阶段 3 必须遵守的数据库约束（F-1 结论）
+
+1. `RecoveryId` 必须有数据库唯一约束，同名候选不能出现两行。
+2. `BaselineUtcTicks` 保留原始 100 ns 精度（或 ISO 8601 七位小数），不能用秒级时间替代。
+3. 同一 RecoveryId 的重复观察必须**更新**候选终值与 gap（例如 later 终点/更大增量），
+   不能简单 `DO NOTHING` 丢弃后续增量。
+4. "恢复候选记录、旧会话结束、新会话开始"必须同一事务提交，不能出现只有候选没有会话边界的中间态。
+5. 未确认恢复流量（Unverified/Interrupted）不得进入正式每日统计，只能留在候选表等待人工确认或丢弃。
+6. 写库失败不得丢候选：先插入候选再采纳会话边界，并提供重试/待持久化机制。
 ```
 
 ### 3.1 为什么重启后不会重复累计

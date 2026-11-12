@@ -268,3 +268,21 @@
 - 背景：单次采样耗时（WLAN 查询 + 接口表读取）可能接近或超过间隔；`PeriodicTimer` 在回调变慢时不会补偿，容易积压。
 - 决策：每轮结束后按"间隔 − 本轮耗时"计算延迟，耗时超过间隔则立即进入下一轮；循环整体受 `CancellationToken` 控制。
 - 影响：实际采样周期略大于配置值；速度仍用两次采样的真实单调时间差计算，不会虚高。
+
+## D-035 F-1：未确认恢复必须切开会话，不得复用原 SessionId
+
+- 状态：已决定并实现（阶段 2 收尾修正，用户 m01067/m01093 批准）
+- 背景：原实现对 Unverified/Interrupted 只在快照里标记"有未确认候选"，会话本身仍是原 SessionId，
+  恢复后的新流量继续累加到旧会话与旧 `StartedAtUtc` 上；非 Continued 的五个结局还会静默丢弃旧会话。
+  这违反了"当前会话流量只属于当前连接"的产品定义，也让阶段 3 无法正确落库。
+- 决策：
+  1. `SessionEndReason` 追加 `RecoveryUnconfirmed`（Unverified/Interrupted）与 `RecoveryRejected`（其余非 Continued）。
+  2. `MonitorSessionEndedInfo` 增加可选 `ResumeOutcome`，正常结束为 null，恢复结束必须带具体结局。
+  3. Unverified/Interrupted 在 `gap.FromUtc` 结束旧会话，同一 `MonitorStep` 内以新 SessionId 开新会话（累计 0），
+     gap 只作独立候选保留；后续 delta 只进新会话。
+  4. 非 Continued 结局在 `Baseline.CapturedAtUtc` 结束旧会话并清理状态。
+  5. `_lastClosedSessionId` 水位保证同一 SessionId 只结束一次（正常与恢复路径共用）；
+     SessionId 严格递增，Int64 上限抛异常，绝不复用。
+  6. Continuous 路径不变：沿用原 SessionId、合并 gap、发 `SessionResumed`，不产生 `SessionEnded`。
+- 影响：`ResetForResume` 签名改为 `(ResumeContext, ResumeOutcome, DateTimeOffset)`；
+  阶段 3 落库必须遵守 `docs/06` §3.1 的六条约束（唯一索引、原始精度、更新而非忽略、同事务、不入日统计、失败不丢候选）。

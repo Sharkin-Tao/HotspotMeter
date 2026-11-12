@@ -97,6 +97,28 @@ CREATE UNIQUE INDEX UX_Sessions_Open
 | 2 | Interrupted | 进程崩溃/断电后由启动流程收尾，EndTimeUtc = 最后检查点时间 |
 | 3 | Abandoned | 无法可信恢复（例如数据损坏），不参与日统计 |
 
+#### 3.3.1 恢复导致的会话边界（F-1）
+
+恢复流程不允许让旧会话"静默消失"。`MonitorSessionEndedInfo.ResumeOutcome` 记录具体结局：
+
+| 恢复结果 | 会话动作 | EndReason | ResumeOutcome | 结束时间 |
+| --- | --- | --- | --- | --- |
+| 证据 Continuous | 沿用原 SessionId，发 `SessionResumed` | —（不结束） | Continued | — |
+| Unverified / Interrupted | 结束旧会话，同帧开新会话（累计 0） | RecoveryUnconfirmed | Continued | `gap.FromUtc` |
+| Rebooted | 结束旧会话 | RecoveryRejected | Rebooted | 最后检查点 `Baseline.CapturedAtUtc` |
+| NotOnTarget | 结束旧会话 | RecoveryRejected | NotOnTarget | 同上 |
+| CounterReset | 结束旧会话 | RecoveryRejected | CounterReset | 同上 |
+| InterfaceChanged | 结束旧会话 | RecoveryRejected | InterfaceChanged | 同上 |
+| InterfaceMissing | 结束旧会话 | RecoveryRejected | InterfaceMissing | 同上 |
+
+落库约定（阶段 3）：
+
+- 被恢复流程结束的旧会话：`SessionStatus=2 (Interrupted)`、`IsRecovered=1`、`EndTimeUtc` 按上表。
+- 未确认的恢复空档单独存 `RecoveryGaps`（阶段 3 新建），不得写入 `TrafficSnapshots`，也不得计入 `DailyTraffic`。
+- `RecoveryGaps.RecoveryId` 必须有 `UNIQUE` 约束；`BaselineUtcTicks` 保留 100 ns 精度；
+  同一 Id 的后续观察更新终值与增量，而不是忽略。
+- 候选记录、旧会话收尾、新会话开始必须同一事务；未确认流量不得进入日统计。
+
 ### 3.4 TrafficSnapshots
 
 ```sql

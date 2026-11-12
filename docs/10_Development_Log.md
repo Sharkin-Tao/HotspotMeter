@@ -218,3 +218,41 @@ dotnet new editorconfig
 ### 6. 下一步（阶段 3，待用户确认）
 
 SQLite 表结构与迁移、检查点写入、会话收尾、`RecoveryCandidate` 的持久化与展示、`DailyTraffic` 聚合与跨午夜拆分。
+
+---
+
+# 阶段 2 收尾修正 F-1：恢复会话边界（2026-11-12）
+
+### 1. 背景与授权
+
+阶段 2 终验（m01092）发现：Unverified 恢复只把 gap 标记为"未并入"，会话仍是原 `SessionId`，恢复后的新流量继续累加到旧会话；非 Continued 的五个结局直接丢弃旧会话且不发 `SessionEnded`。用户 m01093 仅授权 F-1 修正，明确不批准进入阶段 3。
+
+### 2. 改动文件
+
+| 文件 | 改动 |
+| --- | --- |
+| `HotspotMeter.Core/Models/MonitorEvents.cs` | `SessionEndReason` 追加 `RecoveryUnconfirmed`、`RecoveryRejected`；`MonitorSessionEndedInfo` 增加可选 `ResumeOutcome? ResumeOutcome = null` |
+| `HotspotMeter.Core/Monitoring/TrafficAccumulator.cs` | 新增 `_lastClosedSessionId` 水位；`AdoptResumedSession` 非合并分支结束旧会话并以新 SessionId 开新会话；`ResetForResume(ResumeContext, ResumeOutcome, DateTimeOffset)` 发带具体结局的 `SessionEnded`；`EndSession` 推进水位；新增 `CloseRecoveredSession`、`AllocateSessionId`、`NextSessionIdAfter` |
+| `HotspotMeter.Infrastructure/Monitoring/MonitorEngine.cs` | 两处 `ResetForResume` 调用改传 `context` |
+| `HotspotMeter.Tests/Unit/Monitoring/TrafficAccumulatorTests.cs` | 替换 1 例、新增 5 例（切会话、新会话 0、下一帧归属、Interrupted、单次结束与 Id 不复用） |
+| `HotspotMeter.Tests/Unit/Monitoring/MonitorEngineTests.cs` | 强化 3 例（Unverified 切会话、Rebooted 带结局且重复调用不重复结束、NotOnTarget 发结束事件）；Continuous 断言不产生 `SessionEnded` |
+
+### 3. 核心行为
+
+- Unverified/Interrupted：旧会话在 `gap.FromUtc` 结束（`RecoveryUnconfirmed` + `ResumeOutcome=Continued`），同帧新会话从 0 开始，gap 只留候选；`HasUnmergedRecovery` 在切会话后仍保留。
+- 其余非 Continued：旧会话在 `Baseline.CapturedAtUtc` 结束（`RecoveryRejected` + 具体结局），状态清理，无静默丢失。
+- Continuous：不变（沿用 SessionId、`SessionResumed`、不产生 `SessionEnded`）。
+- SessionId 严格递增，Int64 上限抛异常；同一 Id 最多一次 `SessionEnded`。
+
+### 4. 验证
+
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet test HotspotMeter.sln`：**58/58 通过**（2 s）。
+- `dotnet build tools/MonitorHost`：0 警告 0 错误。
+- 独立提交：`阶段2: 修正恢复会话边界（F-1）`。
+
+### 5. 未做与边界
+
+- 未实现 SQLite；`RecoveryGap` 的持久化、唯一索引、更新策略留给阶段 3（约束见 `docs/06` §3.1）。
+- 跨进程重复结束同一会话仍需数据库唯一约束兜底，本阶段只保证进程内单次结束。
+- 未验证：真实崩溃后再次启动时，数据库中的旧会话 Id 与本进程分配 Id 的衔接（阶段 3 验证）。

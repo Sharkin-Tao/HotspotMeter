@@ -24,9 +24,24 @@ public enum SessionEndReason
 
     /// <summary>引擎停止（用户退出程序）。</summary>
     EngineStopped,
+
+    /// <summary>
+    /// 恢复时无法证明连接连续（Unverified / Interrupted）：旧会话按最后可信检查点结束，
+    /// 空档增量作为独立候选保留，不进入会话累计。
+    /// </summary>
+    RecoveryUnconfirmed,
+
+    /// <summary>
+    /// 恢复被判定为不可延续（重启、计数回退、换接口、不在目标热点等）：旧会话按最后可信检查点结束。
+    /// 具体是哪种结局由 <see cref="MonitorSessionEndedInfo.ResumeOutcome"/> 携带。
+    /// </summary>
+    RecoveryRejected,
 }
 
 /// <summary>会话结束事件参数，携带封存后的累计值。</summary>
+/// <param name="ResumeOutcome">
+/// 恢复导致的结束会带上具体结局；正常断开/停止时为 <c>null</c>。
+/// </param>
 public sealed record MonitorSessionEndedInfo(
     long SessionId,
     DateTimeOffset EndedAtUtc,
@@ -34,7 +49,8 @@ public sealed record MonitorSessionEndedInfo(
     long UploadBytes,
     SessionEndReason Reason,
     Guid InterfaceGuid,
-    string Ssid);
+    string Ssid,
+    ResumeOutcome? ResumeOutcome = null);
 
 /// <summary>
 /// BSSID 变化只作为诊断信号：漫游时连接没有断，累计必须连续，不能因此结束会话。

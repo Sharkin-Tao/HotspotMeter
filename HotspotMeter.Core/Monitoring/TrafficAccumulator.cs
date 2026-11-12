@@ -58,6 +58,10 @@ public sealed class TrafficAccumulator
     private int _wakeRebuilds;
     private int _pendingConfirm;
     private long _nextSessionId = 1;
+
+    // 已结束会话的水位。SessionId 只增不减（本地分配 ++，恢复时取 max(旧 Id + 1)），
+    // 因此"新 Id > 水位"等价于"尚未结束"，用它保证同一会话最多发一次 SessionEnded。
+    private long _lastClosedSessionId;
     private bool _hasUnmergedRecovery;
     private long _unmergedRecoveryBytes;
     private long _lastGapMilliseconds;
@@ -121,7 +125,7 @@ public sealed class TrafficAccumulator
         var connection = frame.Connection!;
         if (_session is null)
         {
-            _session = new SessionState(_nextSessionId++, connection.InterfaceGuid, connection.Ssid, connection.Bssid, frame.TimestampUtc);
+            _session = new SessionState(AllocateSessionId(), connection.InterfaceGuid, connection.Ssid, connection.Bssid, frame.TimestampUtc);
             started = _session.ToInfo();
         }
         else if (!string.Equals(_session.Bssid, connection.Bssid, StringComparison.Ordinal))
@@ -160,8 +164,12 @@ public sealed class TrafficAccumulator
     }
 
     /// <summary>
-    /// 恢复成功后接管原会话：恢复 Id 与累计，用当前计数重建基线。
-    /// <paramref name="mergeGap"/> 只有在连续性被证明后才为 true。
+    /// 处理恢复结果。
+    /// <para>
+    /// 只有 <paramref name="mergeGap"/> 为 true（连续性已证明）时才接管原会话；
+    /// 否则旧会话在 <paramref name="gap"/> 的起点结束，当前帧开启一个全新的会话，
+    /// 空档增量只作为未确认候选保留，绝不进入任何会话的正式累计。
+    /// </para>
     /// </summary>
     public MonitorStep AdoptResumedSession(ResumeContext context, RecoveryGap gap, bool mergeGap, in MonitorFrame frame)
     {
@@ -172,46 +180,70 @@ public sealed class TrafficAccumulator
             throw new InvalidOperationException("接管会话需要有效的连接与读数。");
         }
 
-        _session = new SessionState(
-            context.SessionId,
-            frame.Connection.InterfaceGuid,
-            frame.Connection.Ssid,
-            frame.Connection.Bssid,
-            context.SessionStartedAtUtc)
-        {
-            DownloadBytes = context.SessionDownloadBytes,
-            UploadBytes = context.SessionUploadBytes,
-        };
+        var connection = frame.Connection;
+        var reading = frame.Reading;
+        MonitorSessionInfo? started = null;
+        MonitorSessionEndedInfo? ended = null;
+
+        // 水位必须先推进到"旧 Id 之后"，否则新会话可能复用数据库中已有的 Id。
+        _nextSessionId = Math.Max(_nextSessionId, NextSessionIdAfter(context.SessionId));
 
         if (mergeGap)
         {
-            _session.DownloadBytes += gap.DownloadBytes;
-            _session.UploadBytes += gap.UploadBytes;
+            _session = new SessionState(
+                context.SessionId,
+                connection.InterfaceGuid,
+                connection.Ssid,
+                connection.Bssid,
+                context.SessionStartedAtUtc)
+            {
+                DownloadBytes = context.SessionDownloadBytes + gap.DownloadBytes,
+                UploadBytes = context.SessionUploadBytes + gap.UploadBytes,
+            };
         }
         else
         {
+            // Unverified / Interrupted：旧会话以最后可信检查点收尾，新会话从 0 开始。
+            ended = CloseRecoveredSession(context, ResumeOutcome.Continued, SessionEndReason.RecoveryUnconfirmed, gap.FromUtc);
             _hasUnmergedRecovery = true;
             _unmergedRecoveryBytes += gap.TotalBytes;
+
+            _session = new SessionState(
+                AllocateSessionId(),
+                connection.InterfaceGuid,
+                connection.Ssid,
+                connection.Bssid,
+                frame.TimestampUtc);
+            started = _session.ToInfo();
         }
 
-        var counters = frame.Reading.Counters;
         _baseline = new SampleBaseline(
-            counters.InOctets, counters.OutOctets, frame.Reading.Key.InterfaceLuid,
-            frame.MonotonicMilliseconds, frame.TimestampUtc, frame.TickCount64);
+            reading.Counters.InOctets,
+            reading.Counters.OutOctets,
+            reading.Key.InterfaceLuid,
+            frame.MonotonicMilliseconds,
+            frame.TimestampUtc,
+            frame.TickCount64);
         _pendingConfirm = 0;
         _state = MonitorState.Running;
-        _nextSessionId = Math.Max(_nextSessionId, context.SessionId + 1);
         ZeroRates();
 
-        return BuildStep(frame, null, mergeGap ? _session.ToInfo() : null, null, null, null);
+        return BuildStep(frame, started, mergeGap ? _session.ToInfo() : null, ended, null, null);
     }
 
-    /// <summary>恢复失败时清空会话与基线，并标记对应状态；下一次正常采样会开新会话。</summary>
-    public MonitorStep ResetForResume(ResumeOutcome outcome, DateTimeOffset nowUtc)
+    /// <summary>
+    /// 恢复被拒绝时的收尾：旧会话按最后可信检查点结束（不能静默消失），
+    /// 累积器回到"无会话"状态，下一次正常采样会分配新的 SessionId。
+    /// </summary>
+    public MonitorStep ResetForResume(ResumeContext context, ResumeOutcome outcome, DateTimeOffset nowUtc)
     {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var ended = CloseRecoveredSession(context, outcome, SessionEndReason.RecoveryRejected, context.Baseline.CapturedAtUtc);
         _session = null;
         _baseline = null;
         _pendingConfirm = 0;
+        _nextSessionId = Math.Max(_nextSessionId, NextSessionIdAfter(context.SessionId));
         ZeroRates();
         _state = outcome switch
         {
@@ -234,7 +266,7 @@ public sealed class TrafficAccumulator
             _state, false, null, null, false, null, 0, 0, 0, 0, nowUtc, 0,
             _wakeRebuilds, _pendingConfirm, _hasUnmergedRecovery, _unmergedRecoveryBytes, _warning);
         Current = snapshot;
-        return new MonitorStep(snapshot);
+        return new MonitorStep(snapshot, SessionEnded: ended);
     }
 
     /// <summary>导出当前基线供阶段 3 写检查点；没有活动会话或基线时为 <c>null</c>。</summary>
@@ -385,6 +417,7 @@ public sealed class TrafficAccumulator
 
         var session = _session;
         _session = null;
+        _lastClosedSessionId = session.Id;
         return new MonitorSessionEndedInfo(
             session.Id,
             endedAtUtc,
@@ -394,6 +427,50 @@ public sealed class TrafficAccumulator
             session.InterfaceGuid,
             session.Ssid);
     }
+
+    /// <summary>
+    /// 按数据库中的会话上下文关闭旧会话。水位保证同一 SessionId 只结束一次：
+    /// 恢复流程可能被重复调用（非 Continued 结局不经过 RecoveryId 闸门），这里必须幂等。
+    /// </summary>
+    private MonitorSessionEndedInfo? CloseRecoveredSession(
+        ResumeContext context,
+        ResumeOutcome outcome,
+        SessionEndReason reason,
+        DateTimeOffset endedAtUtc)
+    {
+        if (context.SessionId <= _lastClosedSessionId)
+        {
+            return null;
+        }
+
+        _lastClosedSessionId = context.SessionId;
+        return new MonitorSessionEndedInfo(
+            context.SessionId,
+            endedAtUtc,
+            context.SessionDownloadBytes,
+            context.SessionUploadBytes,
+            reason,
+            context.Baseline.InterfaceGuid,
+            context.Baseline.Ssid,
+            outcome);
+    }
+
+    /// <summary>分配新的会话 Id；到 Int64 上限时宁可失败，也不复用历史 Id。</summary>
+    private long AllocateSessionId()
+    {
+        if (_nextSessionId == long.MaxValue)
+        {
+            throw new InvalidOperationException("SessionId 已达 Int64 上限，不能继续分配。");
+        }
+
+        return _nextSessionId++;
+    }
+
+    /// <summary>返回严格大于给定 Id 的下一个值；溢出时抛异常。</summary>
+    private static long NextSessionIdAfter(long sessionId)
+        => sessionId == long.MaxValue
+            ? throw new InvalidOperationException("SessionId 已达 Int64 上限，不能继续分配。")
+            : sessionId + 1;
 
     private void ZeroRates()
     {

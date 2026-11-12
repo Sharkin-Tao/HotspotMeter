@@ -173,7 +173,7 @@ public sealed class MonitorEngine : IMonitorEngine
 
             if (readFailed)
             {
-                Publish(_accumulator.ResetForResume(ResumeOutcome.InterfaceMissing, now));
+                Publish(_accumulator.ResetForResume(context, ResumeOutcome.InterfaceMissing, now));
                 return new ResumeResult(
                     ResumeOutcome.InterfaceMissing,
                     null,
@@ -187,7 +187,7 @@ public sealed class MonitorEngine : IMonitorEngine
 
             if (evaluation.Outcome != ResumeOutcome.Continued)
             {
-                Publish(_accumulator.ResetForResume(evaluation.Outcome, now));
+                Publish(_accumulator.ResetForResume(context, evaluation.Outcome, now));
                 return new ResumeResult(evaluation.Outcome, null, evaluation.Reason, evaluation.Evidence);
             }
 

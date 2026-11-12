@@ -111,11 +111,14 @@ public sealed class MonitorEngineTests
 
         var engine = CreateEngine(detector, counter, new FakeMonotonicClock(), wall, uptime, continuity);
         var resumed = new List<MonitorSessionInfo>();
+        var ended = new List<MonitorSessionEndedInfo>();
         engine.SessionResumed += (_, info) => resumed.Add(info);
+        engine.SessionEnded += (_, info) => ended.Add(info);
 
         var result = await engine.ResumeAsync(CreateContext(baseline), CancellationToken.None);
 
         Assert.Equal(ResumeOutcome.Continued, result.Outcome);
+        Assert.Empty(ended); // Continuous 不改会话边界。
         Assert.NotNull(result.Gap);
         Assert.Equal(5000, result.Gap!.DownloadBytes);
         Assert.Equal(500, result.Gap.UploadBytes);
@@ -195,8 +198,12 @@ public sealed class MonitorEngineTests
         var engine = CreateEngine(detector, counter, new FakeMonotonicClock(), wall, uptime, continuity);
         var resumed = 0;
         var candidates = new List<RecoveryCandidate>();
+        var ended = new List<MonitorSessionEndedInfo>();
+        var started = new List<MonitorSessionInfo>();
         engine.SessionResumed += (_, _) => resumed++;
         engine.RecoveryCandidateDetected += (_, candidate) => candidates.Add(candidate);
+        engine.SessionEnded += (_, info) => ended.Add(info);
+        engine.SessionStarted += (_, info) => started.Add(info);
 
         var result = await engine.ResumeAsync(CreateContext(baseline), CancellationToken.None);
 
@@ -205,7 +212,19 @@ public sealed class MonitorEngineTests
         Assert.Equal(0, resumed);
         Assert.Single(candidates);
         Assert.Equal(5000, candidates[0].Gap.DownloadBytes);
-        Assert.Equal(100, engine.Current!.SessionDownloadBytes);
+
+        // 旧会话结束，新会话从 0 开始；后续流量只会进入新 Id。
+        Assert.Single(ended);
+        Assert.Equal(42, ended[0].SessionId);
+        Assert.Equal(100, ended[0].DownloadBytes);
+        Assert.Equal(50, ended[0].UploadBytes);
+        Assert.Equal(SessionEndReason.RecoveryUnconfirmed, ended[0].Reason);
+        Assert.Equal(ResumeOutcome.Continued, ended[0].ResumeOutcome);
+        Assert.Single(started);
+        Assert.Equal(43, started[0].SessionId);
+        Assert.Equal(0, started[0].DownloadBytes);
+        Assert.Equal(43, engine.Current!.SessionId);
+        Assert.Equal(0, engine.Current.SessionDownloadBytes);
         Assert.True(engine.Current.HasUnmergedRecovery);
         Assert.Equal(5000 + 500, engine.Current.UnmergedRecoveryBytes);
     }
@@ -221,14 +240,30 @@ public sealed class MonitorEngineTests
 
         var engine = CreateEngine(detector, counter, new FakeMonotonicClock(), wall, uptime, new FakeContinuityProvider());
         var resumed = 0;
+        var ended = new List<MonitorSessionEndedInfo>();
         engine.SessionResumed += (_, _) => resumed++;
+        engine.SessionEnded += (_, info) => ended.Add(info);
 
-        var result = await engine.ResumeAsync(CreateContext(baseline), CancellationToken.None);
+        var context = CreateContext(baseline);
+        var result = await engine.ResumeAsync(context, CancellationToken.None);
+        var repeated = await engine.ResumeAsync(context, CancellationToken.None);
 
         Assert.Equal(ResumeOutcome.Rebooted, result.Outcome);
         Assert.Null(result.Gap);
         Assert.Equal(0, resumed);
         Assert.Equal(MonitorState.Rebooted, engine.State);
+
+        Assert.Single(ended);
+        Assert.Equal(42, ended[0].SessionId);
+        Assert.Equal(100, ended[0].DownloadBytes);
+        Assert.Equal(50, ended[0].UploadBytes);
+        Assert.Equal(SessionEndReason.RecoveryRejected, ended[0].Reason);
+        Assert.Equal(ResumeOutcome.Rebooted, ended[0].ResumeOutcome);
+        Assert.Equal(baseline.CapturedAtUtc, ended[0].EndedAtUtc);
+
+        // 重复调用恢复流程不得重复结束同一会话。
+        Assert.Equal(ResumeOutcome.Rebooted, repeated.Outcome);
+        Assert.Single(ended);
     }
 
     [Fact]
@@ -268,11 +303,16 @@ public sealed class MonitorEngineTests
 
         var engine = CreateEngine(detector, counter, new FakeMonotonicClock(), wall, uptime, new FakeContinuityProvider());
         var resumed = 0;
+        var ended = new List<MonitorSessionEndedInfo>();
         engine.SessionResumed += (_, _) => resumed++;
+        engine.SessionEnded += (_, info) => ended.Add(info);
 
         var result = await engine.ResumeAsync(CreateContext(baseline), CancellationToken.None);
 
         Assert.Equal(ResumeOutcome.NotOnTarget, result.Outcome);
         Assert.Equal(0, resumed);
+        Assert.Single(ended);
+        Assert.Equal(SessionEndReason.RecoveryRejected, ended[0].Reason);
+        Assert.Equal(ResumeOutcome.NotOnTarget, ended[0].ResumeOutcome);
     }
 }

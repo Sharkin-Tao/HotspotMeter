@@ -266,6 +266,8 @@ public sealed class TrafficAccumulatorTests
         var step = accumulator.AdoptResumedSession(context, gap, mergeGap: true, TestData.Frame(1000, 7000, 2000));
 
         Assert.NotNull(step.SessionResumed);
+        Assert.Null(step.SessionEnded);
+        Assert.Null(step.SessionStarted);
         Assert.Equal(7, step.Snapshot.SessionId);
         Assert.Equal(5100, step.Snapshot.SessionDownloadBytes);
         Assert.Equal(1050, step.Snapshot.SessionUploadBytes);
@@ -273,25 +275,107 @@ public sealed class TrafficAccumulatorTests
     }
 
     [Fact]
-    public void AdoptResumedSession_UnconfirmedKeepsTotalsAndExposesCandidate()
+    public void AdoptResumedSession_Unconfirmed_EndsOldSessionAndStartsNewOne()
     {
         var accumulator = NewAccumulator();
-        var context = new ResumeContext(
-            new BaselineState(TestData.InterfaceGuid, TestData.Luid, 1000, 500, DateTimeOffset.UnixEpoch, 5_000_000, DateTimeOffset.UnixEpoch.AddMilliseconds(-5_000_000), "OPPO Find X9", null),
-            SessionId: 7,
-            SessionDownloadBytes: 100,
-            SessionUploadBytes: 50,
-            SessionStartedAtUtc: DateTimeOffset.UnixEpoch.AddMinutes(-5));
+        var context = CreateResumeContext(sessionId: 7);
         var gap = new RecoveryGap("7:key", 5000, 1000, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddSeconds(1), RecoveryContinuity.Unverified, "无证据");
 
         var step = accumulator.AdoptResumedSession(context, gap, mergeGap: false, TestData.Frame(1000, 7000, 2000));
 
+        Assert.NotNull(step.SessionEnded);
+        Assert.Equal(7, step.SessionEnded!.SessionId);
+        Assert.Equal(100, step.SessionEnded.DownloadBytes);
+        Assert.Equal(50, step.SessionEnded.UploadBytes);
+        Assert.Equal(SessionEndReason.RecoveryUnconfirmed, step.SessionEnded.Reason);
+        Assert.Equal(ResumeOutcome.Continued, step.SessionEnded.ResumeOutcome);
+        Assert.Equal(DateTimeOffset.UnixEpoch, step.SessionEnded.EndedAtUtc);
+
+        Assert.NotNull(step.SessionStarted);
+        Assert.Equal(8, step.SessionStarted!.SessionId);
+        Assert.Equal(0, step.SessionStarted.DownloadBytes);
+        Assert.Equal(0, step.SessionStarted.UploadBytes);
+        Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(1), step.SessionStarted.StartedAtUtc);
+        Assert.Equal(8, step.Snapshot.SessionId);
         Assert.Null(step.SessionResumed);
-        Assert.Equal(100, step.Snapshot.SessionDownloadBytes);
-        Assert.Equal(50, step.Snapshot.SessionUploadBytes);
+
         Assert.True(step.Snapshot.HasUnmergedRecovery);
         Assert.Equal(6000, step.Snapshot.UnmergedRecoveryBytes);
     }
+
+    [Fact]
+    public void AdoptResumedSession_Unconfirmed_NextFrameGoesToNewSession()
+    {
+        var accumulator = NewAccumulator();
+        var context = CreateResumeContext(sessionId: 7);
+        var gap = new RecoveryGap("7:key", 5000, 1000, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddSeconds(1), RecoveryContinuity.Unverified, "无证据");
+        accumulator.AdoptResumedSession(context, gap, mergeGap: false, TestData.Frame(1000, 7000, 2000));
+
+        var next = accumulator.Process(TestData.Frame(2000, 8000, 2200));
+
+        Assert.Equal(8, next.Snapshot.SessionId);
+        Assert.Equal(1000, next.Snapshot.SessionDownloadBytes);
+        Assert.Equal(200, next.Snapshot.SessionUploadBytes);
+        Assert.Null(next.SessionEnded);
+    }
+
+    [Fact]
+    public void AdoptResumedSession_Interrupted_BehavesLikeUnverified()
+    {
+        var accumulator = NewAccumulator();
+        var context = CreateResumeContext(sessionId: 7);
+        var gap = new RecoveryGap("7:key", 5000, 1000, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddSeconds(1), RecoveryContinuity.Interrupted, "有中断证据");
+
+        var step = accumulator.AdoptResumedSession(context, gap, mergeGap: false, TestData.Frame(1000, 7000, 2000));
+
+        Assert.Equal(SessionEndReason.RecoveryUnconfirmed, step.SessionEnded!.Reason);
+        Assert.Equal(8, step.Snapshot.SessionId);
+        Assert.Equal(0, step.Snapshot.SessionDownloadBytes);
+        Assert.Equal(6000, step.Snapshot.UnmergedRecoveryBytes);
+    }
+
+    [Fact]
+    public void ResetForResume_EndsOldSessionOnceWithConcreteOutcome()
+    {
+        var accumulator = NewAccumulator();
+        var context = CreateResumeContext(sessionId: 7);
+        var now = DateTimeOffset.UnixEpoch.AddMinutes(10);
+
+        var first = accumulator.ResetForResume(context, ResumeOutcome.Rebooted, now);
+        var second = accumulator.ResetForResume(context, ResumeOutcome.Rebooted, now);
+
+        Assert.NotNull(first.SessionEnded);
+        Assert.Equal(7, first.SessionEnded!.SessionId);
+        Assert.Equal(100, first.SessionEnded.DownloadBytes);
+        Assert.Equal(50, first.SessionEnded.UploadBytes);
+        Assert.Equal(SessionEndReason.RecoveryRejected, first.SessionEnded.Reason);
+        Assert.Equal(ResumeOutcome.Rebooted, first.SessionEnded.ResumeOutcome);
+        Assert.Equal(context.Baseline.CapturedAtUtc, first.SessionEnded.EndedAtUtc);
+        Assert.Null(second.SessionEnded);
+        Assert.Equal(MonitorState.Rebooted, first.Snapshot.State);
+    }
+
+    [Fact]
+    public void ResetForResume_NextSessionIdDoesNotReuseOldId()
+    {
+        var accumulator = NewAccumulator();
+        var context = CreateResumeContext(sessionId: 7);
+
+        accumulator.ResetForResume(context, ResumeOutcome.NotOnTarget, DateTimeOffset.UnixEpoch.AddMinutes(10));
+        var step = accumulator.Process(TestData.Frame(2000, 100, 50));
+
+        Assert.NotNull(step.SessionStarted);
+        Assert.Equal(8, step.SessionStarted!.SessionId);
+        Assert.Equal(0, step.Snapshot.SessionDownloadBytes);
+    }
+
+    private static ResumeContext CreateResumeContext(long sessionId)
+        => new(
+            new BaselineState(TestData.InterfaceGuid, TestData.Luid, 1000, 500, DateTimeOffset.UnixEpoch, 5_000_000, DateTimeOffset.UnixEpoch.AddMilliseconds(-5_000_000), "OPPO Find X9", null),
+            sessionId,
+            SessionDownloadBytes: 100,
+            SessionUploadBytes: 50,
+            SessionStartedAtUtc: DateTimeOffset.UnixEpoch.AddMinutes(-5));
 
     [Fact]
     public void CaptureBaseline_ReturnsSessionIdentityAndCounters()

@@ -11,7 +11,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 2 已完成实现（54 项测试通过 + 真机比对），等待用户验收确认** |
+| 当前阶段 | **阶段 2 已完成实现（58 项测试通过 + 真机比对，含 F-1 收尾修正），等待用户验收确认** |
 | 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
 | 未实现 | SQLite 表结构与持久化、会话收尾与跨日拆分、两个窗口、设置页、开机启动 |
 | 下一次要做的事 | 用户确认阶段 2 后，按 `docs/08` 阶段 3 先给计划（表结构 + 检查点 + 恢复持久化），再动手 |
@@ -30,11 +30,12 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - 三个会直接影响产品的结论：①只能按 InterfaceGuid 取唯一行（按 Type=71 求和是真实值的 6 倍）；②会话流量必须累加 delta（计数器重置后与真实会话差 267,124 B）；③睡眠/接口拆除后必须重建基线并两帧确认（否则会出现约 23 MB 幻影流量）。
 - 项目目录已迁移到 `E:\hotspotmeter\HotspotMeter`（见 `docs/09` D-025）。
 
-### 阶段 2 实际结果（2026-11-12，54/54 测试通过）
+### 阶段 2 实际结果（2026-11-12，58/58 测试通过）
 
 - `TrafficAccumulator`：会话累计 = Σ 有效 delta；首帧与长暂停/回退后的两帧确认增量记 0；真断开/SSID 变化才结束会话，接口暂时缺失只暂停。
 - `BaselineResumeEvaluator` + `MonitorEngine.ResumeAsync`：Tick 回退→Rebooted，目标不匹配→NotOnTarget，行缺失→InterfaceMissing，LUID 变化→InterfaceChanged，计数回退→CounterReset，开机偏移 >10 min→Rebooted，否则 Continued 算 gap。
-- 恢复默认**不**自动入账：默认证据源恒 `Unverified`，只发 `RecoveryCandidateDetected` 并在快照暴露 `HasUnmergedRecovery`；只有 `Continuous` 才 `SessionResumed`。
+- 恢复默认**不**自动入账：默认证据源恒 `Unverified`，只发 `RecoveryCandidateDetected`；只有 `Continuous` 才 `SessionResumed`。
+- **F-1 会话边界**：Unverified/Interrupted 时旧会话在 `gap.FromUtc` 结束（`RecoveryUnconfirmed`），同帧以新 SessionId 开新会话（累计 0），gap 只作候选；其余非 Continued 结局在最后检查点结束旧会话（`RecoveryRejected` + 具体 `ResumeOutcome`）；同一 SessionId 只结束一次，Id 严格递增。
 - 恢复幂等：`RecoveryId` 稳定，进程内 HashSet + 信号量，重复调用返回 `AlreadyApplied=true`。
 - 真机 45 s（60 MB 下载）比对：引擎 61.6 MB/715.06 KB，系统计数差 64,637,304/746,352 B，差异 <0.1%。
 
@@ -67,7 +68,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 9. WLAN API 可稳定取得 SSID/BSSID/GUID；`MIB_IF_ROW2.InterfaceGuid` 与之一一对应。`InOctets/OutOctets` 反映真实收发字节（150 MB 下载实测比值 1.0295）。
 10. 结构体布局（x64）：`MIB_IF_ROW2`=1352、`WLAN_CONNECTION_ATTRIBUTES`=604、`WLAN_INTERFACE_INFO`=532。
 11. 测速用 `Stopwatch` 不受墙钟跳变影响；重启可由 `TickCount64` + 开机近似时刻识别。
-12. 引擎行为已被 54 项自动化测试锁定：会话累计=Σ delta、两帧确认、六状态、恢复六种结局、恢复幂等（含并发）、墙钟跳变不影响速度。
+12. 引擎行为已被 58 项自动化测试锁定：会话累计=Σ delta、两帧确认、六状态、恢复六种结局、恢复幂等（含并发）、墙钟跳变不影响速度、F-1 恢复会话切分与单次结束。
 13. 恢复 gap 的连续性默认 `Unverified`：`ResumeAsync` 算出候选但**不**并入原会话，必须由证据源给出 `Continuous` 才合并。
 14. `MonitorEngine` 位于 Infrastructure；Core 不引用 Windows API、WPF、SQLite（靠项目引用方向保证）。
 15. 采样间隔默认 1000 ms、最小 500 ms，`MonitorOptions.Validate()` 强制。
@@ -116,3 +117,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-12 | 建立知识库；完成阶段 0（骨架、构建、测试、文档） |
 | 2026-11-12 | 完成阶段 1（11 项 API 验证）；项目迁移到 `E:\hotspotmeter\HotspotMeter`；新增 D-017～D-025 |
 | 2026-11-12 | 完成阶段 2（Core 模型/累积器/恢复判定、Infrastructure 检测器/计数器/引擎、54 项测试、MonitorHost 真机比对）；新增 D-026～D-034 |
+| 2026-11-12 | F-1 收尾修正：恢复时切分会话、非 Continued 不再静默丢会话、单次结束水位；58 项测试通过；新增 D-035 |

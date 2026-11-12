@@ -17,11 +17,11 @@
 
 - `ByteSizeFormatterTests`（12 个用例）：0/1/512/1023/1024/1536/KB/MB/GB/TB、1024 进制、负数抛异常。
 
-### 已完成（阶段 2，共 54 个用例）
+### 已完成（阶段 2，含 F-1 收尾修正，共 58 个用例）
 
-- `TrafficAccumulatorTests`（21）：正常采样、首帧 0、计数器回退 + 两帧确认、长暂停（睡眠）、检测器失败只暂停、SSID 变化结束会话、BSSID 变化只告警、接口缺失与恢复、合理性 Warn/Drop/无速率不设限、恢复合入与不合入、墙钟 +2 h 不影响速度。
+- `TrafficAccumulatorTests`（26）：正常采样、首帧 0、计数器回退 + 两帧确认、长暂停（睡眠）、检测器失败只暂停、SSID 变化结束会话、BSSID 变化只告警、接口缺失与恢复、合理性 Warn/Drop/无速率不设限、恢复合入（不改会话边界）、墙钟 +2 h 不影响速度；F-1：Unverified 结束旧会话并开新会话、Interrupted 同 Unverified、新会话累计 0、下一帧只进新会话、非 Continued 结束带具体 ResumeOutcome、同一 SessionId 只结束一次、拒绝后新 Id 不复用旧 Id。
 - `BaselineResumeEvaluatorTests`（11）：Continued/CounterReset/InterfaceChanged/Rebooted/InterfaceMissing/NotOnTarget 六种结局；开机偏移 10:00 仍 Continued、10:01 判 Rebooted；Tick 回退优先于一切。
-- `MonitorEngineTests`（9）：循环累计并在 Stop 报 EngineStopped、检测器异常发告警、恢复合并、同上下文幂等、并发只处理一次、Unverified 不合并并出候选、Tick 回退拒绝恢复、未连目标、连着其他热点。
+- `MonitorEngineTests`（9）：循环累计并在 Stop 报 EngineStopped、检测器异常发告警、恢复合并、同上下文幂等、并发只处理一次、Unverified 切会话并出候选、Rebooted 结束旧会话且重复调用不重复结束、未连目标结束旧会话、连着其他热点。
 
 ### 待实现（阶段 3+）
 
