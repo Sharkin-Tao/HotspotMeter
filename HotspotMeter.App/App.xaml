@@ -1,0 +1,11 @@
+<Application x:Class="HotspotMeter.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        阶段 0 故意不设置 StartupUri、也不创建任何窗口：
+        悬浮状态栏在阶段 4 加入，流量统计窗口在阶段 5 加入，
+        启动流程与依赖注入组合根也在那时实现。
+    -->
+    <Application.Resources>
+    </Application.Resources>
+</Application>

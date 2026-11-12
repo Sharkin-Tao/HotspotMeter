@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    所有项目共享的编译设置。
+    目标框架不在这里设置：WPF 项目是 net10.0-windows，类库是 net10.0。
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 保留完整的中文/区域设置支持，避免日期分组在非固定区域性下出现意外行为。 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

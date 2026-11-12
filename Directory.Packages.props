@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    集中包版本管理（CPM）：所有 NuGet 版本只在这里声明，项目文件只写包名。
+    好处是四个项目不会出现同一包的不同版本，升级时只需要改一处。
+
+    版本选择原则：与 .NET 10 运行时对齐（10.0.x），不使用 11.x 预览/新主版本。
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="数据持久化">
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup Label="日志抽象">
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup Label="测试">
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>
