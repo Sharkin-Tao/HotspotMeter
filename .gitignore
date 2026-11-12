@@ -503,3 +503,9 @@ tools/**/obj/
 .idea/
 *.user
 *.suo
+
+# ApiProbe run artifacts (CSV/JSON evidence stays local until summarized)
+tools/ApiProbe/out/
+
+# 探针输出（防止从仓库根目录运行时把证据误入库）
+/out/

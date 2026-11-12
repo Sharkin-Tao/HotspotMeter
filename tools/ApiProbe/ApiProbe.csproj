@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    阶段 1 的一次性验证原型，不属于产品代码：
+    - 不加入 HotspotMeter.sln；
+    - 不被 App/Core/Infrastructure 引用；
+    - 只用于在本机实测 WLAN API 与 IP Helper 的真实行为。
+    通用编译设置来自仓库根的 Directory.Build.props，这里不重复。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HotspotMeter.ApiProbe</RootNamespace>
+    <AssemblyName>ApiProbe</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
