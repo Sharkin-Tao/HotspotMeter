@@ -6,8 +6,8 @@
 
 | 阶段 | 主题 | 状态 |
 | --- | --- | --- |
-| 0 | 项目初始化与知识库 | **代码与文档已完成，等待确认** |
-| 1 | Windows API 与技术可行性验证 | 未开始 |
+| 0 | 项目初始化与知识库 | **已完成（2026-11-12 用户验收通过）** |
+| 1 | Windows API 与技术可行性验证 | **已完成，等待用户确认后进入阶段 2** |
 | 2 | 热点识别与实时流量引擎 | 未开始 |
 | 3 | SQLite、会话管理与异常恢复 | 未开始 |
 | 4 | 悬浮状态栏 | 未开始 |
@@ -34,22 +34,23 @@
 
 ---
 
-## 阶段 1：Windows API 与技术可行性验证
+## 阶段 1：Windows API 与技术可行性验证（已完成）
 
 **目标**：用一次性原型证明 WLAN API + IP Helper 能在本机正确识别目标热点并读到可信字节数，**不碰主解决方案**。
 
-**计划**
+**实际做法**：`tools/ApiProbe/`（net10.0-windows 控制台，不加入解决方案），自写 P/Invoke 与参数解析，零第三方依赖；验证项从 8 项扩展为 11 项（新增启动即连接、退出期连续性、跨重启）。
 
-1. 新建 `tools/ApiProbe/`（`dotnet new console`，net10.0-windows），**不加入主解决方案**，仅本机验证用；`bin/obj` 已被 .gitignore 覆盖。
-2. 写最小 P/Invoke：`WlanOpenHandle` / `WlanEnumInterfaces` / `WlanQueryInterface` / `WlanFreeMemory` / `WlanCloseHandle`、`GetIfTable2` / `FreeMibTable`。
-3. 输出：所有无线接口的 GUID/描述/状态；当前连接的 SSID（按 `uSSIDLength` 解码）、BSSID、Profile；`MIB_IF_ROW2` 中匹配行的 GUID/LUID/Index/Alias/Type/OperStatus/InOctets/OutOctets。
-4. 按 05 文档第 9 节 P1-1～P1-8 逐项验证，记录数值与偏差。
-5. 把结论写回 `docs/05_Network_Monitoring.md` 的"验证结果"与 `docs/09_Decisions.md`，未通过项给出替代方案。
-6. 原型保留在 `tools/` 供阶段 2 复制结构；不引用、不影响主解决方案构建。
+**结果**：11 项全部通过，关键结论见 `docs/05` 第 9 节与 `docs/09` D-017～D-024。要点：
 
-**退出标准**：8 项验证有明确结论（含"失败原因 + 替代方案"）；GUID↔接口映射唯一且可重复；下载 100 MB 的计数偏差可解释。
+- 同一网卡在接口表中有多行同值（实测按 Type 求和为真值 6 倍）→ 只能按 GUID 取唯一行。
+- 会话流量必须累加 delta；不能用网卡累计计数器（重置后差 267,124 B）。
+- 睡眠时 Stopwatch 继续走，循环要按有效时长计时；接口拆除瞬间可能读到 0，恢复后需两帧确认。
+- 测速只用单调时钟；墙钟 +2 h 跳变不影响速率。
+- 重启可由 TickCount64 + 开机近似时刻识别，判定后拒绝恢复。
 
-**风险**：WLAN 服务被禁用；网卡驱动不返回 GUID；计数器语义与预期不同（需回退到 `GetIfEntry2` 或 `NetworkInterface.GetIPStatistics`）。任一风险都要如实报告，不得假装通过。
+**退出标准达成情况**：11 项验证均有明确结论；GUID↔接口映射唯一可重复；下载 150 MB（原计划 100 MB，用户批准放大）偏差 1.0295 且可解释（协议开销 + 后台流量 + 读取时机）。
+
+**证据**：`tools/ApiProbe/out/`（不入库，可按 `docs/10` 阶段 1 第 3 节复现）。
 
 ---
 
@@ -57,15 +58,23 @@
 
 **目标**：把阶段 1 的结论落成 Core 接口 + Infrastructure 实现，形成可测试的采样引擎（无 UI）。
 
+**阶段 1 带来的硬约束（必须体现在设计里）**
+
+- 行选择只按 GUID；`InterfaceMissing` 是正常状态而不是异常。
+- 会话累计 = Σ 有效 delta；`BaselinePending`（首帧/恢复帧）增量为 0。
+- 状态机至少覆盖 `Running / InterfaceMissing / CounterReset / Suspended / Rebooted`，任一非 `Running` 都重建基线。
+- 计时用 `Stopwatch`；样本同时带 `TimestampUtc` 与 `GapMs`。
+- 对"单帧增量超过链路速率上限"记告警并丢弃该帧。
+
 **计划**
 
-1. Core：`HotspotId`/`NetworkInterfaceKey`/`HotspotConnection`/`InterfaceCounters`/`SessionState`，`IHotspotDetector`、`ITrafficCounter`、`IClock`。
-2. Infrastructure：`WlanHotspotDetector`、`InterfaceTrafficCounter`、`MonitorEngine`（`PeriodicTimer` + 状态机 + 异常隔离）。
-3. 单元测试：计数器回退、接口消失、超大间隔、切换热点、异常不终止循环。
-4. 临时控制台宿主（`tools/` 或 App 的调试开关）打印会话累计与速度 60 秒，人工比对。
-5. 采样间隔可配置（默认 1000 ms）。
+1. Core：`HotspotId`/`NetworkInterfaceKey`/`HotspotConnection`/`InterfaceCounters`/`SessionState`，`IHotspotDetector`、`ITrafficCounter`、`IClock`（单调时钟抽象）、`ISessionClock`（墙钟抽象，便于测试跨日）。
+2. Infrastructure：`WlanHotspotDetector`、`InterfaceTrafficCounter`、`MonitorEngine`（`PeriodicTimer` + 状态机 + 异常隔离 + 告警事件）。
+3. 单元测试（用假时钟/假计数器）：计数器回退、接口消失、长暂停、热点切换、单帧异常增量、异常不终止循环、基线两帧确认。
+4. 临时控制台宿主 `tools/MonitorHost`（不入解决方案）打印会话累计与速度，与 Windows"数据使用量"人工比对。
+5. 采样间隔可配置（默认 1000 ms，最小 500 ms）。
 
-**退出标准**：真实热点下累计与系统数据使用量同量级；所有异常路径有测试；引擎连续运行 30 分钟无异常退出。
+**退出标准**：真实热点下累计与系统数据使用量同量级（差异可解释）；所有异常路径有测试；引擎连续运行 30 分钟无异常退出、无内存增长。
 
 ---
 
@@ -157,6 +166,7 @@
 
 ## 当前阻塞/待确认
 
-1. 用户对阶段 0 的确认。
+1. 用户对阶段 1 的验收确认（确认后才进入阶段 2）。
 2. 01 文档第 4 节的 5 个产品问题（会话合并、托盘、默认范围、重置、采样间隔可配置）。
 3. 04 文档第 9 节的保留期与导出问题。
+4. `E:\hotspotmeter\HotspotMeter` 旧位置残留目录与 `E:\hotspotmeter-clone-git-backup` 的最终处置（见 `docs/09` D-025）。

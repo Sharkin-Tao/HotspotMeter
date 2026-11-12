@@ -101,3 +101,63 @@ dotnet new editorconfig
 
 等待用户确认阶段 0。确认后按 `docs/08` 进入阶段 1：
 `tools/ApiProbe` 控制台原型 + P1-1～P1-8 验证 + 结论回写 `docs/05`、`docs/09`。
+
+---
+
+# 阶段 1：Windows API 与技术可行性验证（2026-11-12）
+
+### 1. 范围
+
+只做一次性验证原型 `tools/ApiProbe/`：不改 App/Core/Infrastructure 业务代码，不实现正式监控服务，不开发 UI，不引入第三方依赖（HTTP 下载、参数解析、JSON 全部用 BCL）。
+
+### 2. 新增文件
+
+| 路径 | 作用 |
+| --- | --- |
+| `tools/ApiProbe/ApiProbe.csproj` | net10.0-windows 控制台，`IsPackable=false`，**不加入解决方案** |
+| `Native/WlanApi.cs` | `WlanOpenHandle/EnumInterfaces/QueryInterface/FreeMemory/CloseHandle` |
+| `Native/IpHlpApi.cs` | `GetIfTable2/FreeMibTable` + `MIB_IF_ROW2` |
+| `Commands/ListCommand.cs` | P1-1/P1-2：接口与 GUID 映射 |
+| `Commands/WatchCommand.cs` | P1-4/P1-6/P1-8：连续采样、速度、回退/长暂停处理 |
+| `Commands/DownloadCommand.cs` | P1-3：Range 分段下载 + 计数器对比 |
+| `Commands/ContinuityCommand.cs` | P1-9/P1-10/P1-11：`--save` / `--verify` 基线 |
+| `Support/*` | 参数解析、格式化、布局自检、JSON、CSV |
+
+### 3. 验证结果（全部真实运行）
+
+| 项 | 结论 | 数值摘要 |
+| --- | --- | --- |
+| P1-1 | 通过 | SSID `OPPO Find X9`、BSSID `1A:44:DD:0E:E5:B0`，与系统一致 |
+| P1-2 | 通过 | 结构体 1352/604/532；GUID 唯一映射 1 行，Type=71 |
+| P1-3 | 通过 | 150 MB 下载 → InOctets +161,933,750 B，比值 1.0295；BCL 交叉对比 16 MiB 时差 0 字节 |
+| P1-4 | 通过 | 空载 60 s 约 3 KB/s 背景流量，0 回退、0 缺帧 |
+| P1-5 | 通过 | 禁用网卡 → 计数 0/0、26 s 冻结、随后小值恢复；增量无负数 |
+| P1-6 | 通过（修复后） | 睡眠 94,534 ms 被识别，唤醒首帧增量 0 |
+| P1-7 | 通过 | 墙钟 +2 h 跳变，单调时钟不受影响，0 回退 |
+| P1-8 | 通过 | 16 行 Type=71；按类型求和 = 真实值 6.00 倍 |
+| P1-9 | 通过 | 新进程首帧 inDelta=0 |
+| P1-10 | 通过 | 外部 5 MiB 下载 → gap 5,492,930/87,098 B 可恢复 |
+| P1-11 | 通过 | 真机重启 → `REBOOT_DETECTED`，拒绝恢复 |
+
+证据文件在 `tools/ApiProbe/out/`（不入库）：`list.json`、`p1-5.csv`、`p1-6b.csv`、`p1-7.csv`、`continuity-after-5mb.json`、`continuity-after-reboot.json`。
+
+### 4. 本轮发现的真实缺陷
+
+1. **墙钟计时导致睡眠后立即退出**：第一版 `watch` 用 `Stopwatch.Elapsed.TotalSeconds` 判停，睡眠跨过 316 s 后循环直接结束，一帧唤醒数据都没采到。改为累计"有效采样时长"（`gapMs > 3×interval` 不计入并强制增量 0）。
+2. **接口拆除瞬间的计数器 0 读数**：P1-6b 睡眠开始时读到 `0`、唤醒后读回 24,191,795，若直接相减会凭空多出约 23 MB。已加入 `sleepGap` 规则并写入 `D-020`（恢复后两帧确认）。
+3. **首次构建 6 个编译错误**：`CsvSampleWriter.Path` 属性遮蔽 `System.IO.Path`；`WlanApi.cs` 缺 `using ...Support`。均已修复，未改动验证逻辑。
+4. **Cloudflare 下载端点返回 403**：`speed.cloudflare.com/__down` 在本网络不可用（加 UA 也 403），改用 `ash-speed.hetzner.com/100MB.bin`（支持 Range，206）。
+
+### 5. 构建与提交
+
+- `dotnet build tools/ApiProbe/ApiProbe.csproj -c Release`：0 警告 0 错误。
+- `dotnet build HotspotMeter.sln -c Debug`：0 警告 0 错误（产品代码未被改动）。
+- 提交 `7650bcf`：阶段 1 原型源码 + `tools/ApiProbe/out/` 忽略规则。
+
+### 6. 项目目录迁移（用户操作）
+
+用户把项目从 `E:\HotspotMeter` 迁移到 `E:\hotspotmeter\HotspotMeter`，原目录下恰好存在一个无关克隆仓库（`bd9001a Initial commit`），导致嵌套 `.git`。处理方式：把本项目 `.git` 迁入新目录作为唯一仓库，克隆的 `.git` 移至 `E:\hotspotmeter-clone-git-backup` 保留（未删除），见 `D-025`。
+
+### 7. 下一步
+
+阶段 1 全部 11 项验证完成，等待用户确认。确认后进入阶段 2：Core 接口 + Infrastructure 采样引擎 + 状态机 + 单元测试（无 UI）。

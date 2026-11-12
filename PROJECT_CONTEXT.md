@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 0 已完成，等待用户确认** |
-| 代码状态 | 解决方案 + 4 个项目骨架，1 个工具类（`ByteSizeFormatter`）与 13 个测试 |
-| 未实现 | 所有网络 API、SQLite 表结构、托管服务、两个窗口、设置页、开机启动 |
-| 下一次要做的事 | 用户确认阶段 0 后，按 `docs/08` 进入阶段 1（技术可行性原型），先给计划再动手 |
+| 当前阶段 | **阶段 1 已完成（11 项验证全部通过），等待用户验收确认** |
+| 代码状态 | 解决方案 + 4 个项目骨架；`ByteSizeFormatter` + 13 个测试；验证原型 `tools/ApiProbe/`（不入解决方案） |
+| 未实现 | 正式网络采集服务、SQLite 表结构、会话管理、两个窗口、设置页、开机启动 |
+| 下一次要做的事 | 用户确认阶段 1 后，按 `docs/08` 阶段 2 先给计划（Core 接口 + 采样引擎），再动手 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -23,6 +23,12 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - `dotnet test`：**13/13 通过**，其中包含真实打开内存 SQLite 并执行 `SELECT sqlite_version()` 的冒烟测试；原生 `runtimes\win-x64\native\e_sqlite3.dll` 已被正确复制到输出目录。
 - `dotnet run --project HotspotMeter.App`：进程启动后按设计立即退出，退出码 0（阶段 0 没有窗口）。
 - `AGENTS.md` 已确认会被 DeepSeek Harness 自动加载（`dsh-agent-instructions` 会从项目根向下加载 `AGENTS.md`/`CLAUDE.md` 链）。
+
+### 阶段 1 实际验证结果（2026-11-12，11/11 通过）
+
+- 原型 `tools/ApiProbe/` 真实跑完 P1-1～P1-11，结论与数值见 `docs/05` 第 9 节、日志见 `docs/10`。
+- 三个会直接影响产品的结论：①只能按 InterfaceGuid 取唯一行（按 Type=71 求和是真实值的 6 倍）；②会话流量必须累加 delta（计数器重置后与真实会话差 267,124 B）；③睡眠/接口拆除后必须重建基线并两帧确认（否则会出现约 23 MB 幻影流量）。
+- 项目目录已迁移到 `E:\hotspotmeter\HotspotMeter`（见 `docs/09` D-025）。
 
 ## 3. 文档索引与阅读顺序
 
@@ -50,19 +56,20 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 6. 普通 WPF 应用无法通过公开 API 融入 Windows 11 原生任务栏，因此是"独立透明窗口 + 自动定位 + 手动拖动兜底"。
 7. 环境事实：`.NET 10.0.402` SDK、WindowsDesktop 10.0.13 运行时、x64、Windows 11 26200 均已在本机确认。
 8. 本机 `Microsoft.Data.Sqlite 10.0.15` 能加载原生 SQLite（已由测试验证），`Microsoft.Extensions.Logging.Abstractions 10.0.15` 可还原。
+9. WLAN API 可稳定取得 SSID/BSSID/GUID；`MIB_IF_ROW2.InterfaceGuid` 与之一一对应。`InOctets/OutOctets` 反映真实收发字节（150 MB 下载实测比值 1.0295）。
+10. 结构体布局（x64）：`MIB_IF_ROW2`=1352、`WLAN_CONNECTION_ATTRIBUTES`=604、`WLAN_INTERFACE_INFO`=532。
+11. 测速用 `Stopwatch` 不受墙钟跳变影响；重启可由 `TickCount64` + 开机近似时刻识别。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
 | 假设 | 计划验证阶段 |
 | --- | --- |
-| `WlanQueryInterface` 返回的 `WLAN_CONNECTION_ATTRIBUTES` 能稳定拿到 SSID/BSSID/接口 GUID | 阶段 1 |
-| `MIB_IF_ROW2.InterfaceGuid` 与 WLAN 接口 GUID 可直接关联，且唯一 | 阶段 1 |
-| `InOctets/OutOctets` 在目标网卡上反映真实收发字节、更新及时 | 阶段 1 |
 | 1000ms 采样间隔下速度显示足够平滑、CPU 占用可接受 | 阶段 2 |
 | `AllowsTransparency=True` + 圆角 Border 在目标机器上性能/命中测试可接受 | 阶段 4 |
 | 能通过任务栏窗口 + UI Automation 稳定定位"开始按钮"附近空位 | 阶段 4 |
 | 通过 `PowerModeChanged`/`SystemEvents` 可靠捕获睡眠唤醒 | 阶段 3/4 |
 | 单文件发布 + WPF + SQLite 原生库在目标机无需额外依赖 | 阶段 7 |
+| 企业级/隐藏 SSID、多无线网卡、2.4G/5G 切换、超长休眠下的行为 | 阶段 2/7 |
 
 ## 6. 工作约定（摘要，详见 AGENTS.md）
 
@@ -76,6 +83,12 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 dotnet build HotspotMeter.sln -c Debug
 dotnet test  HotspotMeter.sln -c Debug
 dotnet run --project HotspotMeter.App   # 阶段 0~3 无界面，启动即退出
+
+# 阶段 1 验证原型（独立于解决方案）
+dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- selftest
+dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- list
+dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- watch --seconds 30
+dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- continuity --save tools/ApiProbe/out/state.json
 ```
 
 ## 8. 变更记录
@@ -83,3 +96,4 @@ dotnet run --project HotspotMeter.App   # 阶段 0~3 无界面，启动即退出
 | 日期 | 变更 |
 | --- | --- |
 | 2026-11-12 | 建立知识库；完成阶段 0（骨架、构建、测试、文档） |
+| 2026-11-12 | 完成阶段 1（11 项 API 验证）；项目迁移到 `E:\hotspotmeter\HotspotMeter`；新增 D-017～D-025 |
