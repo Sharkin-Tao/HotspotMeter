@@ -256,3 +256,66 @@ SQLite 表结构与迁移、检查点写入、会话收尾、`RecoveryCandidate`
 - 未实现 SQLite；`RecoveryGap` 的持久化、唯一索引、更新策略留给阶段 3（约束见 `docs/06` §3.1）。
 - 跨进程重复结束同一会话仍需数据库唯一约束兜底，本阶段只保证进程内单次结束。
 - 未验证：真实崩溃后再次启动时，数据库中的旧会话 Id 与本进程分配 Id 的衔接（阶段 3 验证）。
+
+---
+
+# 阶段 3A：SQLite 基础设施与迁移骨架（2026-11-12）
+
+### 1. 范围与授权
+
+用户 m01299 授权阶段 3A：只建立数据库基础设施与最小元数据，**不**冻结业务表、不接入监控数据流、
+不实现优先级写入、不做 UI。开始前复核：`main@2e0defb`、工作区干净、58/58 通过、解决方案与
+MonitorHost 均 0 警告 0 错误。
+
+### 2. 新增文件
+
+| 文件 | 职责 |
+| --- | --- |
+| `HotspotMeter.Infrastructure/Persistence/DatabasePaths.cs` | 数据库/隔离目录唯一定义；默认 `%LOCALAPPDATA%`；拒绝相对路径与程序目录 |
+| `HotspotMeter.Infrastructure/Persistence/SqliteConnectionFactory.cs` | 连接字符串 + PRAGMA（外键、忙等待、NORMAL、WAL 校验）；关闭连接池 |
+| `HotspotMeter.Infrastructure/Persistence/SchemaMigrator.cs` | `user_version` 唯一权威；v1 元数据表；单事务迁移；高版本拒绝 |
+| `HotspotMeter.Infrastructure/Persistence/DatabaseHealth.cs` | `PRAGMA quick_check`；缺失文件视为待创建；结构化失败结果 |
+| `HotspotMeter.Infrastructure/Persistence/DatabaseQuarantine.cs` | db/-wal/-shm/-journal 整体隔离；失败还原并抛异常 |
+| `HotspotMeter.Infrastructure/Persistence/DatabaseBootstrapper.cs` | 健康检查 → 隔离 → 迁移 的启动编排 |
+| `HotspotMeter.Infrastructure/Persistence/IDatabaseWriter.cs` | 串行写入契约 |
+| `HotspotMeter.Infrastructure/Persistence/SqliteWriter.cs` | 单消费者 FIFO、每项独立事务、排空式停止 |
+| `HotspotMeter.Infrastructure/SingleInstance/SingleInstanceGuard.cs` | `Local\` 命名 Mutex + 进程内去重 |
+| `HotspotMeter.Tests/TestSupport/TempDirectory.cs` | 每测试独立临时目录 |
+| `HotspotMeter.Tests/Unit/Persistence/*` | 8 个测试类，见下 |
+
+Schema v1 DDL 只有：
+
+```sql
+CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
+```
+
+种子键：`created_at_utc`、`initialized_at_utc`、`app_version`（均 `INSERT OR IGNORE`，重复初始化不改写创建时间）。
+
+### 3. 测试与构建
+
+- `dotnet test HotspotMeter.sln`：**101/101 通过**（2 s）；阶段 2 的 58 例全部保留通过。
+- 新增 43 例：路径 5、连接工厂 5、迁移 6、健康 4、隔离 5、启动编排 4、Writer 9、单实例 5。
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet build tools/MonitorHost/MonitorHost.csproj`：0 警告 0 错误。
+- `tools/ApiProbe` 未改动。
+
+### 4. 实现中预先处理的两个易错点
+
+1. **WAL 是数据库级设置**：连接工厂仍每次执行 `PRAGMA journal_mode=WAL` 并校验返回值为 `wal`，
+   目的是在只读目录/不支持 WAL 的存储上尽早失败，而不是把它当成"每连接开关"。
+2. **Mutex 对同线程可重入**：只靠命名 Mutex 无法阻止同一进程重复获取，`SingleInstanceGuard`
+   因此增加静态进程内集合；`AbandonedMutexException` 视为"上次异常退出、本次获得所有权"。
+
+本轮没有出现编译失败或测试失败；上述两点是设计阶段识别并直接规避的风险。
+
+### 5. 明确边界（未做）
+
+- 业务表（HotspotProfiles/ConnectionSessions/TrafficSnapshots/DailyTraffic/RecoveryGaps/AppSettings）
+  与索引、唯一约束：留待 3B 审核后以 v2 迁移加入。
+- `SessionManager`、检查点、跨午夜拆分、启动恢复、`DailyTraffic` 重算、日志文件提供程序：3C–3F。
+- Writer 未实现优先级、多队列、重试与业务命令；连接未接入 `MonitorEngine`。
+- App 启动流程未改：单实例守卫目前是独立组件，3B/4 接入。
+
+### 6. 下一步
+
+等待用户审核 3A 的代码、测试、文档与提交；批准后再规划 3B（冻结业务表结构与约束）。

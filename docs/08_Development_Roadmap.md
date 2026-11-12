@@ -81,14 +81,35 @@
 
 **目标**：持久化与恢复闭环，仍无 UI。
 
-**计划**
+### 阶段 3A：SQLite 基础设施（已完成实现，2026-11-12）
 
-1. 按 04 实现建表、索引、迁移器、连接工厂（WAL、`foreign_keys=ON`、`busy_timeout`）。
-2. 仓储：会话、快照、日汇总、设置；单事务写入（快照 + 会话 + 日汇总）。
-3. `SessionManager` 接入引擎：连接建会话、断开结束、10 秒检查点、跨午夜拆分。
-4. 启动恢复：未结束会话收尾、一致性校验、`DailyTraffic` 重算。
-5. 集成测试：临时文件库、崩溃模拟（直接结束进程的脚本或注入异常）、迁移、重算、唯一索引。
-6. 日志接入 `Microsoft.Extensions.Logging` 文件提供程序。
+**范围**：只建立数据库基础设施与最小元数据，不冻结业务表、不接入监控数据流。
+
+**实际做法**
+
+1. `DatabasePaths`：默认 `%LOCALAPPDATA%\HotspotMeter\Database`，拒绝相对路径与程序目录内的路径；目录与隔离目录统一创建。
+2. `SqliteConnectionFactory`：`Pooling=false`；每连接执行 `foreign_keys=ON`、`busy_timeout=5000`、`synchronous=NORMAL`，并对 `journal_mode` 校验必须为 `wal`。
+3. `SchemaMigrator`：版本唯一权威 `PRAGMA user_version`；v1 只建 `SchemaInfo(Key, Value)`；每个版本的 DDL、种子数据与版本号写入同一事务；高版本库直接抛 `DatabaseVersionTooNewException` 拒绝写入。
+4. `DatabaseHealth`：`PRAGMA quick_check`；文件不存在视为"待创建"而非损坏；异常转成结构化结果，不吞错误。
+5. `DatabaseQuarantine`：把 `db`、`-wal`、`-shm`、`-journal` 整体移入 `corrupt-yyyyMMdd-HHmmss-fff`；失败时尽量还原并抛异常，禁止在新位置建库覆盖证据。
+6. `DatabaseBootstrapper`：健康检查 → 隔离 → 迁移 的顺序编排，结果带 `HealthBefore` 与隔离目录。
+7. `SingleInstanceGuard`：`Local\HotspotMeter.SingleInstance.v1` 命名 Mutex，处理 `AbandonedMutexException`，并额外做进程内去重。
+8. `SqliteWriter`：单消费者、FIFO、每项独立事务的骨架；`StopAsync` 先排空再释放连接，可重复调用。**未实现**优先级、多队列、检查点合并与业务命令。
+
+**结果**
+
+- 新增 43 个测试（58 → **101/101 通过**，2 s）：路径 5、连接工厂 5、迁移 6、健康 4、隔离 5、编排 4、Writer 9、单实例 5。
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误；`dotnet build tools/MonitorHost`：0 警告 0 错误。
+- 独立提交：`阶段3A: SQLite 基础设施与迁移骨架`。
+- 未做（留给 3B+）：业务表 DDL、`SessionManager`、检查点与跨午夜拆分、启动恢复与 `DailyTraffic` 重算、日志文件提供程序。
+
+### 阶段 3B–3F（待 3A 审核通过后逐段批准）
+
+1. 3B：冻结并实现业务表（HotspotProfiles/ConnectionSessions/TrafficSnapshots/DailyTraffic/RecoveryGaps/AppSettings）、索引与约束，完成第二轮 14 项修订的落库。
+2. 3C：`SessionManager` 接入引擎：建会话、断开结束、10 秒检查点、跨午夜拆分、恢复事件落库。
+3. 3D：启动恢复：未结束会话收尾、连续性候选处理、一致性校验、`DailyTraffic` 重算。
+4. 3E：崩溃/断电/唯一约束/重复结束的集成测试与真机演练。
+5. 3F：日志接入 `Microsoft.Extensions.Logging` 文件提供程序，完成阶段 3 验收。
 
 **退出标准**：06 文档 R-01～R-08 中可在无 UI 环境验证的场景全部通过；数据库可被外部工具打开检查。
 
@@ -165,7 +186,7 @@
 
 ## 当前阻塞/待确认
 
-1. 用户对阶段 2（含 F-1 收尾修正）的验收确认（确认后才进入阶段 3）。
+1. 阶段 3A 已实现，等待用户审核；审核通过后才可开始 3B（业务表冻结）。
 2. 01 文档第 4 节的 5 个产品问题（会话合并、托盘、默认范围、重置、采样间隔可配置）——其中采样间隔已有默认值 1000 ms / 最小 500 ms，其余仍待定。
 3. 04 文档第 9 节的保留期与导出问题。
 4. `E:\hotspotmeter\HotspotMeter` 旧位置残留目录与 `E:\hotspotmeter-clone-git-backup` 的最终处置（见 `docs/09` D-025）。

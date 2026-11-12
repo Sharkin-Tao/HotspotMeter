@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 2 已完成实现（58 项测试通过 + 真机比对，含 F-1 收尾修正），等待用户验收确认** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
-| 未实现 | SQLite 表结构与持久化、会话收尾与跨日拆分、两个窗口、设置页、开机启动 |
-| 下一次要做的事 | 用户确认阶段 2 后，按 `docs/08` 阶段 3 先给计划（表结构 + 检查点 + 恢复持久化），再动手 |
+| 当前阶段 | **阶段 3A 已完成实现（SQLite 基础设施，101/101 测试通过），等待用户审核 3A 后批准 3B** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
+| 未实现 | 业务表与仓储、会话收尾与跨日拆分、启动恢复与日汇总重算、两个窗口、设置页、开机启动 |
+| 下一次要做的事 | 用户审核 3A 的代码/测试/文档/提交；批准后先给 3B 计划（冻结 7 张业务表与约束），再动手 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -38,6 +38,15 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **F-1 会话边界**：Unverified/Interrupted 时旧会话在 `gap.FromUtc` 结束（`RecoveryUnconfirmed`），同帧以新 SessionId 开新会话（累计 0），gap 只作候选；其余非 Continued 结局在最后检查点结束旧会话（`RecoveryRejected` + 具体 `ResumeOutcome`）；同一 SessionId 只结束一次，Id 严格递增。
 - 恢复幂等：`RecoveryId` 稳定，进程内 HashSet + 信号量，重复调用返回 `AlreadyApplied=true`。
 - 真机 45 s（60 MB 下载）比对：引擎 61.6 MB/715.06 KB，系统计数差 64,637,304/746,352 B，差异 <0.1%。
+
+### 阶段 3A 实际结果（2026-11-12，101/101 测试通过）
+
+- 新增 `HotspotMeter.Infrastructure/Persistence/`：`DatabasePaths`、`SqliteConnectionFactory`、`SchemaMigrator`、`DatabaseHealth`、`DatabaseQuarantine`、`DatabaseBootstrapper`、`IDatabaseWriter`、`SqliteWriter`；`SingleInstance/SingleInstanceGuard`。
+- Schema v1 只有 `SchemaInfo(Key, Value)`（`created_at_utc`/`initialized_at_utc`/`app_version`）；版本唯一权威是 `PRAGMA user_version`，高版本库拒绝写入。
+- 连接：`Pooling=false`；每连接 `foreign_keys=ON`、`busy_timeout=5000`、`synchronous=NORMAL`，并校验 `journal_mode=wal`。
+- 损坏处理：`quick_check` 失败 → 把 db/-wal/-shm/-journal 整体移入 `corrupt-{时间戳}`；隔离失败则抛异常且不创建新库。
+- Writer：单消费者 FIFO、每项独立事务、`StopAsync` 排空后释放连接；**未**实现优先级/多队列/业务命令。
+- 测试新增 43 例（58 → 101），解决方案与 MonitorHost 均 0 警告 0 错误。
 
 ## 3. 文档索引与阅读顺序
 
@@ -72,6 +81,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 13. 恢复 gap 的连续性默认 `Unverified`：`ResumeAsync` 算出候选但**不**并入原会话，必须由证据源给出 `Continuous` 才合并。
 14. `MonitorEngine` 位于 Infrastructure；Core 不引用 Windows API、WPF、SQLite（靠项目引用方向保证）。
 15. 采样间隔默认 1000 ms、最小 500 ms，`MonitorOptions.Validate()` 强制。
+16. 3A 基础设施已被 101 项测试锁定：路径约束、PRAGMA（外键/WAL/忙等待）、迁移事务回滚与高版本拒绝、`quick_check` 损坏检测、四类文件整体隔离与失败不覆盖、单实例互斥、Writer 事务回滚/排空停止/100 并发串行/取消后可用。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -82,6 +92,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 | `AllowsTransparency=True` + 圆角 Border 在目标机器上性能/命中测试可接受 | 阶段 4 |
 | 能通过任务栏窗口 + UI Automation 稳定定位"开始按钮"附近空位 | 阶段 4 |
 | 通过 `PowerModeChanged`/`SystemEvents` 可靠捕获睡眠唤醒 | 阶段 3/4 |
+| 真实磁盘损坏/断电后的 `quick_check` 结果与隔离目录权限行为（3A 只模拟了垃圾字节与被占用文件） | 阶段 3E |
 | 单文件发布 + WPF + SQLite 原生库在目标机无需额外依赖 | 阶段 7 |
 | 企业级/隐藏 SSID、多无线网卡、2.4G/5G 切换、超长休眠下的行为 | 阶段 2/7 |
 
@@ -118,3 +129,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-12 | 完成阶段 1（11 项 API 验证）；项目迁移到 `E:\hotspotmeter\HotspotMeter`；新增 D-017～D-025 |
 | 2026-11-12 | 完成阶段 2（Core 模型/累积器/恢复判定、Infrastructure 检测器/计数器/引擎、54 项测试、MonitorHost 真机比对）；新增 D-026～D-034 |
 | 2026-11-12 | F-1 收尾修正：恢复时切分会话、非 Continued 不再静默丢会话、单次结束水位；58 项测试通过；新增 D-035 |
+| 2026-11-12 | 阶段 3A：SQLite 路径/连接/迁移/健康检查/隔离/单实例/串行 Writer 骨架；101 项测试通过；新增 D-036～D-040 |
