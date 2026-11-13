@@ -16,7 +16,7 @@ public class SchemaMigratorTests
         var version = new SchemaMigrator().Migrate(connection);
 
         Assert.Equal(SchemaMigrator.SupportedVersion, version);
-        Assert.Equal(1, SchemaMigrator.ReadUserVersion(connection));
+        Assert.Equal(SchemaMigrator.SupportedVersion, SchemaMigrator.ReadUserVersion(connection));
         Assert.Equal(1, ReadInt(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='SchemaInfo';"));
 
         var values = ReadSchemaInfo(connection);
@@ -39,7 +39,7 @@ public class SchemaMigratorTests
 
         var second = migrator.Migrate(connection);
 
-        Assert.Equal(1, second);
+        Assert.Equal(SchemaMigrator.SupportedVersion, second);
         Assert.Equal(createdAt, ReadSchemaInfo(connection)["created_at_utc"]);
         Assert.Equal(3, ReadInt(connection, "SELECT COUNT(*) FROM SchemaInfo;"));
     }
