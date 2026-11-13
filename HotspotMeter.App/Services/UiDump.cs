@@ -259,6 +259,12 @@ internal static class UiDump
         var captionAbove = false;
         var captionLeftAligned = false;
         var captionFontMatch = false;
+        var captionWeightMatch = false;
+        var captionStyleMatch = false;
+        var fontCoversCjk = false;
+        var fontCoversDigits = false;
+        var captionFontWeight = FontWeights.Normal;
+        var trafficFontWeight = FontWeights.Normal;
         var captionVisible = false;
         var captionOpacity = 0.0;
         var trafficOpacity = 0.0;
@@ -275,6 +281,21 @@ internal static class UiDump
             captionLeftAligned = Math.Abs(captionRect.Left - trafficRect.Left) <= 0.5;
             captionFontMatch = string.Equals(
                 caption.FontFamily.Source, trafficValue.FontFamily.Source, StringComparison.OrdinalIgnoreCase);
+            captionWeightMatch = caption.FontWeight == trafficValue.FontWeight;
+            captionFontWeight = caption.FontWeight;
+            trafficFontWeight = trafficValue.FontWeight;
+            captionStyleMatch = caption.FontStyle == trafficValue.FontStyle;
+            // 直接检查字体文件是否同时含中文与拉丁字形：只比较 FontFamily 字符串无法发现
+            // "Segoe UI Variable + 逐字符回退到雅黑"这种表面同族、实际混排的情况。
+            var typeface = new Typeface(
+                caption.FontFamily, caption.FontStyle, caption.FontWeight, caption.FontStretch);
+            if (typeface.TryGetGlyphTypeface(out var glyphTypeface))
+            {
+                fontCoversCjk = glyphTypeface.CharacterToGlyphMap.ContainsKey('已')
+                                && glyphTypeface.CharacterToGlyphMap.ContainsKey('流');
+                fontCoversDigits = glyphTypeface.CharacterToGlyphMap.ContainsKey('0')
+                                   && glyphTypeface.CharacterToGlyphMap.ContainsKey('B');
+            }
             captionOpacity = caption.Opacity;
             trafficOpacity = trafficValue.Opacity;
             // 透明度必须只加在标签自身：数字不透明，且共用的父容器也不透明。
@@ -285,11 +306,15 @@ internal static class UiDump
 
         // 自动适配的 Compact/Minimal 密度有意隐藏标签；此时只校验"没有状态文字/图标"。
         var captionOk = !captionVisible ||
-                        (captionPresent && captionAbove && captionLeftAligned && captionFontMatch);
+                        (captionPresent && captionAbove && captionLeftAligned && captionFontMatch
+                         && captionWeightMatch && captionStyleMatch && fontCoversCjk && fontCoversDigits);
         var ok = !statusPresent && captionOk && !hasWifiPath && (!captionVisible || opacityIsolated);
         return $"simplified ok={ok} statusText={statusPresent} caption={captionPresent} " +
                $"captionVisible={captionVisible} captionAbove={captionAbove} " +
                $"captionLeftAligned={captionLeftAligned} captionFontMatch={captionFontMatch} " +
+               $"captionWeightMatch={captionWeightMatch} captionStyleMatch={captionStyleMatch} " +
+               $"fontCoversCjk={fontCoversCjk} fontCoversDigits={fontCoversDigits} " +
+               $"captionWeight={captionFontWeight} trafficWeight={trafficFontWeight} " +
                $"captionOpacity={captionOpacity:0.00} trafficOpacity={trafficOpacity:0.00} " +
                $"opacityIsolated={opacityIsolated} " +
                $"wifiIcon={hasWifiPath} trafficFont={trafficFont:0.#} speedFont={speedFont:0.#}";

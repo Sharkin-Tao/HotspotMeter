@@ -89,12 +89,17 @@
 
 禁止使用纯饱和 `#00FF00` / `#FF0000`（刺眼、对比度差）。
 
-### 1.6 字体【暂定】
+### 1.6 字体（阶段 4C-13 现状）
 
-- 中文/常规：`Microsoft YaHei UI`，回退 `Segoe UI`。
-- 数字：`Segoe UI` 或 `Segoe UI Variable`，启用 `Typography.NumeralAlignment="Tabular"`，避免数字跳动。
-- 字号：状态文字 12；大数字 30；说明文字 10；速度 10。
+- 胶囊内标签与流量数字统一使用 `Microsoft YaHei UI`（回退 `Microsoft YaHei`），字重同为 `Bold`、样式 `Normal`。
+  原因见 §7.10：`Segoe UI Variable` 不含 CJK 字形，此前中文逐字符回退到雅黑、数字留在 Segoe，
+  且雅黑只有 Light/Normal/Bold，标签的 SemiBold 被映射成 Bold，造成"标签更粗、字形两套"。
+- 数字不再使用 `Segoe UI Variable`：虽然其 Latin 更接近原设计，但无法与中文标签同族。
+  字号仍为 46×缩放系数，主体地位不变；未启用 `Typography.NumeralAlignment="Tabular"`（数字宽度变化可接受，
+  若后续出现明显跳动再评估）。
+- 字号：状态文字 12（当前胶囊已不显示状态文字）；会话数字 46；说明标签 11；速度 14（均随尺寸缩放）。
 - 数字变化时不做滚动动画（会干扰读数），仅数值更新。
+- 系统字体缺失时的回退链只保留同设计的雅黑家族，不再把 Segoe 放在前面，避免重新引入逐字符混排。
 
 ### 1.7 交互【已确认】
 
@@ -233,9 +238,9 @@
   都 `HorizontalAlignment=Left`，左边缘由同一布局基准决定（不使用 Margin/绝对定位模拟对齐）；标签在数字正上方。
   右侧 ↓ 下载 / ↑ 上传两行竖排实时速度（下载在上、上传在下）。
   流量数字放在 `Viewbox`（只缩小、不裁切），长文本如"999.9 GB"仍完整显示。
-- 说明标签（4C-11/4C-12）：字号 11×缩放系数、`TextSecondary #A1A1A6`、`Opacity=0.65`（只加在 `TrafficCaption`
-  自身，不作用于父容器）、`FontWeight=SemiBold`、与数字间距 2×缩放系数 DIP；
-  与数字共用 `TrafficFontFamily`（`Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI`）。
+- 说明标签（4C-11/4C-12/4C-13）：字号 11×缩放系数、`TextSecondary #A1A1A6`、`Opacity=0.65`（只加在 `TrafficCaption`
+  自身，不作用于父容器）、`FontWeight=Bold`、与数字间距 2×缩放系数 DIP；
+  与数字共用 `TrafficFontFamily`（`Microsoft YaHei UI, Microsoft YaHei`，中英文均来自同一字体文件，无逐字符回退）。
   自动适配的 Compact/Minimal 密度因高度不足隐藏该标签，Normal 密度与普通四档/自定义尺寸始终显示。
 - 对齐（阶段 4C-6）：流量数字与速度块放在**同一个 Grid 行的同一行高**里，二者都是
   `VerticalAlignment="Center"`，因此速度块整体中心严格等于流量数字控件的中心；不依赖任何手工 Margin。
@@ -314,19 +319,21 @@
   不用 `Topmost=false→true` 抢焦点；自动适配模式的位置夹取以显示器边界为界（可拖入任务栏），
   普通模式以工作区 + 8 DIP 为界（4C-9 修订）。
 
-### 7.8 说明标签与数字的实测几何（阶段 4C-11）
+### 7.8 说明标签与数字的实测几何（阶段 4C-13）
 
-标准档 320×104、150% DPI，UiDump 实测（窗口内 DIP 坐标）：
+标准档 320×104、150% DPI，UiDump 实测（窗口内 DIP 坐标，文本为 `18.26 KB`）：
 
 | 元素 | 位置/尺寸 |
 | --- | --- |
-| "已使用流量" | x=18, y=16.7, 54.7×14.7，字号 11，SemiBold |
-| 流量数字 | x=18, y=33.3, 146.7×54，字号 46，SemiBold |
-| ↓/↑ 速度块 | y=39.7..80.9，中心 60.3 |
+| "已使用流量" | x=18, y=19.3, 54.7×14，字号 11，Bold |
+| 流量数字 | x=18, y=35.3, 183.3×48.7，字号 46，Bold |
+| ↓/↑ 速度块 | y=39..80.3，中心 59.67 |
 
 - 标签与数字左边缘均为 x=18，严格对齐（UiDump `captionLeftAligned delta=0`）。
-- 标签底边 31.4，数字顶边 33.3，间距 1.9 DIP；两者字体家族同为 `Segoe UI Variable Display`。
-- 速度块中心 60.3 = 数字控件中心 60.3，4C-6 的对齐基准未被破坏。
+- 标签底边 33.3，数字顶边 35.3，间距 2.0 DIP；两者字体家族同为 `Microsoft YaHei UI`，字重同为 Bold。
+- 速度块中心 59.67 ≈ 数字控件中心 59.67（delta 0），4C-6 的对齐基准未被破坏。
+- 与 4C-11（Segoe）相比，数字同字号下字形更宽（183.3 vs 146.7）、行高更矮（48.7 vs 54）；
+  `Viewbox` 保证长文本只缩不裁，四档/自定义均通过 `layout=ok`。
 
 ### 7.9 说明标签不透明度（阶段 4C-12）
 
@@ -337,5 +344,22 @@
   - 绿底 `#1E8E3E` → `#739A82`，**1.34:1**（实心灰本身也只有 1.63:1；这是"柔和次级文字"的刻意取舍）
   - 红底 `#C5221F` → `#AE7577`，**1.55:1**（实心灰 2.25:1）
 - 约束：不再往下调（0.5 时约 1.2:1，11 px 下会难以辨认）；若实际观感太弱，优先升到 0.75–0.8，
-  而不是改数字或父容器。字体、字号、字重、位置、左对齐均未变。
+  而不是改数字或父容器。4C-12 本身未改字体、字号、字重、位置；字体家族与字重在 4C-13 统一调整。
+
+### 7.10 字体统一与中英混排回退（阶段 4C-13）
+
+- 现象：标签是中文、数字是拉丁字符，虽共用同一个 `FontFamily` 字符串，实际观感是两套字形，标签还更粗。
+- 根因（已由字体表实测确认，不是猜测）：
+  1. 资源原值 `Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI` 中，`Segoe UI Variable Display` 的
+     `CharacterToGlyphMap` 不含 CJK 字形。WPF 对中文逐字符回退到后备列表里的雅黑，数字/字母仍用 Segoe，
+     于是同一个 TextBlock 内出现两种字体。
+  2. `Microsoft YaHei UI` 只有 Light(290)/Normal(400)/Bold(700)，没有 SemiBold。标签的 `SemiBold(600)`
+     被就近匹配到 Bold，而数字的 Segoe Variable 有真正的 SemiBold(600)，造成"标签比数字粗"。
+- 修复：`TrafficFontFamily` 改为 `Microsoft YaHei UI, Microsoft YaHei`（同一字体文件同时含中文与拉丁字形），
+  标签与数字都显式 `FontWeight="Bold"`，`FontStyle` 均为 Normal；字号、间距、左对齐、透明度、速度区不变。
+- 验证：UiDump 新增 `captionWeightMatch`、`captionStyleMatch`、`fontCoversCjk`、`fontCoversDigits`
+  （直接查 `Typeface.TryGetGlyphTypeface` 的字符映射，确认 `已/流/0/B` 都在同一字体文件里），四档/自定义/长文本
+  全部 `ok=True`；像素截图标签主色仍为 65% 合成色。
+- 代价：数字改用雅黑后，同字号下拉丁字形更宽（标准档 `18.26 KB` 宽 183.3 vs 146.7）、行高更矮（48.7 vs 54），
+  视觉比原 Segoe 略宽扁；这是"中英文必须同族"的取舍。若未来允许内嵌字体，可换成同时具备中文与 SemiBold 的开源字体。
 

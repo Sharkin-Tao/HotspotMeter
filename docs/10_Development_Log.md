@@ -981,3 +981,26 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
   已在 `docs/02` §7.9 与 D-081 记录取舍，未宣称满足 WCAG AA。
 - 文档：`docs/02` §1.3/§1.5/§7.1/§7.8/§7.9；`docs/09` D-081；本日志；`PROJECT_CONTEXT`。
 - 未验证：视觉引擎仍不可用，实际柔和程度需人工目检；65% 在 11 px 下的可辨性未做用户测试。
+
+## 阶段 4C-13：标签与数字统一字体家族、字重
+
+- 需求：标签与数字看起来属于同一套字体；标签不得比数字更粗；数字保持字号与主体地位；保留 65% 透明度、
+  上方位置、左对齐与速度区。
+- 根因核查：用 `[Windows.Media.Fonts]::SystemFontFamilies` + `FamilyTypefaces` 枚举本机字体，确认
+  `Microsoft YaHei UI` 只有 Light/Normal/Bold（无 SemiBold），`Segoe UI Variable Display` 有 SemiBold
+  但不含 CJK。原资源把 Segoe 放首位，中文逐字符回退雅黑、数字留在 Segoe；标签 SemiBold 被雅黑映射为 Bold，
+  数字为真 SemiBold，导致"标签更粗、字形两套"。
+- 修复：`TrafficFontFamily` 改为 `Microsoft YaHei UI, Microsoft YaHei`；`TrafficCaption` 与 `TrafficValue`
+  的 `FontWeight` 都改为 `Bold`；其余（字号、Margin、Opacity、布局、速度块）未动。
+- `UiDump.CheckSimplifiedContent` 新增 `captionWeightMatch`、`captionStyleMatch`、`fontCoversCjk`、
+  `fontCoversDigits`；后者用 `Typeface.TryGetGlyphTypeface(...).CharacterToGlyphMap` 直接检查 `已/流/0/B`
+  是否在同一字体文件，避免只看 `FontFamily.Source` 的假一致。
+- 自检 `artifacts/ui-selftest30/selftest.txt`：四档 + 自定义 + 长文本全部 `layout=ok texts=8`、
+  `captionFontMatch=True captionWeightMatch=True captionStyleMatch=True fontCoversCjk=True fontCoversDigits=True`；
+  速度 delta ≤0.33；自动适配/定位/固定/设置/重启全部通过。
+- 实机标准档：标签 `x=18,y=19.3,54.7×14`；数字 `x=18,y=35.3,183.3×48.7`（`18.26 KB`）；间距 2.0 DIP；
+  左边缘差 0；速度块中心 59.67 = 数字中心。
+- 代价与观察：数字改用雅黑后拉丁字形变宽（183.3 vs 146.7）、行高变矮（48.7 vs 54）；`layout=ok` 且
+  `Viewbox` 只缩不裁。像素截图标签主色仍为 `#739B82`（65% 合成），说明透明度未被破坏。
+- 文档：`docs/02` §1.6/§7.1/§7.8/新增 §7.10；`docs/09` D-082；本日志；`PROJECT_CONTEXT`。
+- 未验证：雅黑 Bold 在 11 px + 65% 下的实际观感仍需人工目检；视觉引擎仍不可用。

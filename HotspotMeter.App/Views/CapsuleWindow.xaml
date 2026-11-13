@@ -22,8 +22,17 @@
         d:DataContext="{d:DesignInstance Type=vm:CapsuleViewModel}">
 
     <Window.Resources>
-        <!-- 标签与数字共用同一字体家族，避免"说明像另一种字体"的割裂感。 -->
-        <FontFamily x:Key="TrafficFontFamily">Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI</FontFamily>
+        <!--
+            4C-13：标签是纯中文、数字是拉丁字符，之前用
+            "Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI"。
+            Segoe UI Variable 不含 CJK 字形，WPF 会逐字符回退到微软雅黑：
+            中文实际是 YaHei、数字是 Segoe Variable，且 YaHei 只有 Normal/Bold，
+            没有 SemiBold——标签的 SemiBold 被映射成 Bold，数字仍是真的 SemiBold，
+            于是出现"标签更粗、字形不是一套"的观感。
+            现在统一用同时覆盖中英文的 Microsoft YaHei UI（拉丁字形本身源自 Segoe 家族），
+            两个 TextBlock 也不再依赖逐字符回退。
+        -->
+        <FontFamily x:Key="TrafficFontFamily">Microsoft YaHei UI, Microsoft YaHei</FontFamily>
     </Window.Resources>
 
     <Window.ContextMenu>
@@ -63,7 +72,7 @@
             <TextBlock x:Name="TrafficCaption"
                        Text="已使用流量"
                        FontFamily="{StaticResource TrafficFontFamily}"
-                       FontSize="{Binding CaptionFontSize}" FontWeight="SemiBold"
+                       FontSize="{Binding CaptionFontSize}" FontWeight="Bold"
                        Foreground="{StaticResource TextSecondary}"
                        Opacity="0.65"
                        HorizontalAlignment="Left"
@@ -86,7 +95,7 @@
                     <TextBlock x:Name="TrafficValue"
                                Text="{Binding SessionText}"
                                FontFamily="{StaticResource TrafficFontFamily}"
-                               FontSize="{Binding TrafficFontSize}" FontWeight="SemiBold" Foreground="White"
+                               FontSize="{Binding TrafficFontSize}" FontWeight="Bold" Foreground="White"
                                LineHeight="{Binding TrafficLineHeight}" LineStackingStrategy="BlockLineHeight" />
                 </Viewbox>
 

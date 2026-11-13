@@ -791,3 +791,20 @@
   不允许通过调低父容器或数字透明度来"统一"，也不改字号/字重/位置。
 - 备选与否决：把 `Foreground` 改为 `#A1A1A6` 加 alpha——效果等价但透明度藏在画刷里，UiDump 难以断言，
   且容易被后续样式覆盖；给标签加背景底板——改变视觉设计，且用户未要求。
+
+## D-082 胶囊文字统一用 Microsoft YaHei UI + Bold，消除中英混排回退
+
+- 状态：已决定（阶段 4C-13，覆盖 D-080 的字体家族与字重部分）
+- 事实依据（`Fonts.SystemFontFamilies` + `FamilyTypefaces` 实测）：
+  - `Microsoft YaHei UI` 仅有 Light(290)/Normal(400)/Bold(700)，**没有 SemiBold**；
+  - `Segoe UI Variable Display/Text/Small` 有 Light/350/Normal/SemiBold/Bold，但**不含 CJK 字形**。
+- 根因：原资源 `Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI` 先命中 Segoe，中文再逐字符回退雅黑，
+  数字留在 Segoe；同时标签 SemiBold 在雅黑里被就近匹配为 Bold，数字却是真 SemiBold，故"标签更粗、两套字形"。
+- 决策：`TrafficFontFamily = Microsoft YaHei UI, Microsoft YaHei`；标签与数字都显式 `FontWeight=Bold`，
+  `FontStyle=Normal`。数字字号仍 46×s，视觉主体地位不变；标签仍 11×s、`Opacity=0.65`、在数字上方且左对齐。
+- 理由：唯一能同时覆盖中文与拉丁、且在本机稳定存在的 UI 字体是雅黑；拉丁字形本身源自 Segoe 家族，
+  统一后不会出现"中文一个字体、数字另一个字体"。显式 Bold 避免 SemiBold→Bold 的隐式映射继续误导。
+- 代价：数字同字号下更宽、行高更矮（标准档 `18.26 KB` 183.3×48.7 vs 原 146.7×54），`Viewbox` 仍保证不裁切；
+  若未来允许内嵌字体（如思源黑体 SemiBold），可重新评估。
+- 备选与否决：只把标签改成雅黑 Bold、数字保留 Segoe——不满足"同字体家族"，且宽度差异仍在；
+  用 `Typography` 或透明度掩盖——用户明确禁止掩盖；内嵌第三方字体——增加体积与授权问题，超出本次范围。

@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 4C-12 已实现（胶囊"已使用流量"标签自身 Opacity=0.65，数字/速度/父容器不受影响；构建 0/0，385/385 测试通过），等待用户验收** |
+| 当前阶段 | **阶段 4C-13 已实现（胶囊标签与数字统一 `Microsoft YaHei UI` + Bold，消除中文回退与字重错配；构建 0/0，385/385 测试通过），等待用户验收** |
 | 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）、业务表 v2/v3 与基础仓储/OperationId/时间切分/日汇总/摘要编码（3B-1～3B-5a）；App：胶囊窗口 + `CapsuleViewModel` + `MonitorSessionService` + 窗口位置/尺寸存储 + 托盘 + 设置窗口；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
 | 未实现 | 统计窗口、右键菜单“流量统计”功能、快照/会话持久化管线（StepBuffer、`StepProduced`、`SessionPersistenceService`、Settlement 入口、Writer 状态机）、启动恢复与一致性修复、开机启动、用户选择目标热点 |
-| 下一次要做的事 | 用户验收 4C-12 的标签透明度（重点：在绿/红底色上是否"明显弱于数字但仍可辨认"；若过淡，把 0.65 调到 0.75–0.8）；验收后进入统计窗口开发 |
+| 下一次要做的事 | 用户验收 4C-13 的字体统一（重点：标签与数字是否像同一套字形、标签是否仍比数字粗；数字改用雅黑后略宽扁是否可接受）；验收后进入统计窗口开发 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -189,6 +189,15 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - 对比度实测：绿底合成 `#739A82` 为 1.34:1，红底合成 `#AE7577` 为 1.55:1；实心灰原本为 1.63:1 / 2.25:1。这是"装饰性次级文字"的刻意弱化，不宣称满足 WCAG AA。
 - 未验证：65% 在 11 px 下的实际可辨性需人工目检；视觉引擎仍不可用。
 
+### 阶段 4C-13 实际结果（2026-11-13，标签与数字统一字体）
+
+- 根因经本机字体表实测：`Microsoft YaHei UI` 无 SemiBold（Light/Normal/Bold），`Segoe UI Variable Display` 有 SemiBold 但不含 CJK。原资源以 Segoe 开头，中文逐字符回退雅黑、数字留在 Segoe；标签 SemiBold 在雅黑被映射为 Bold，数字是真 SemiBold，造成“标签更粗、两套字形”。
+- 修复：`TrafficFontFamily` 改为 `Microsoft YaHei UI, Microsoft YaHei`；`TrafficCaption` 与 `TrafficValue` 均显式 `FontWeight=Bold`；字号、间距、`Opacity=0.65`、左对齐与速度区未动。
+- `UiDump` 新增 `captionWeightMatch/captionStyleMatch/fontCoversCjk/fontCoversDigits`，用 `Typeface.TryGetGlyphTypeface(...).CharacterToGlyphMap` 验证 `已/流/0/B` 同属一个字体文件。
+- 验证：`dotnet build` 0/0、`dotnet test` **385/385**；`artifacts/ui-selftest30/selftest.txt`：四档+自定义+长文本 `layout=ok texts=8`，`captionFontMatch/WeightMatch/StyleMatch=True`、`fontCoversCjk/Digits=True`，速度 delta ≤0.33，自动适配/定位/固定/设置/重启全部通过。
+- 实机标准档：标签 `x=18,y=19.3,54.7×14`，数字 `x=18,y=35.3,183.3×48.7`（`18.26 KB`），间距 2.0 DIP；数字同字号下比 Segoe 更宽、行高更矮。
+- 未验证：雅黑 Bold 在 11 px + 65% 下的观感需人工目检；视觉引擎仍不可用。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -285,3 +294,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-13 | 阶段 4C-10：胶囊说明标签"已使用流量"移到数字上方（两行 Grid，速度块与数字同行保持中心对齐）；普通四档/自定义可见，自动适配 Compact/Minimal 隐藏；更新 docs/02、D-079、日志 |
 | 2026-11-13 | 阶段 4C-11：标签与数字合并到同一 StackPanel、共用 TrafficFontFamily、标签 SemiBold 且左边缘严格对齐；UiDump 增加左对齐/字体一致断言；新增 D-080（覆盖 D-079 对齐部分） |
 | 2026-11-13 | 阶段 4C-12：说明标签自身 `Opacity=0.65`（父容器与数字保持 1.0），UiDump 增加透明度隔离断言；对比度实测记录；新增 D-081；提交全部未提交改动 |
+| 2026-11-13 | 阶段 4C-13：标签与数字统一 `Microsoft YaHei UI` + Bold，消除 CJK 逐字符回退与 SemiBold→Bold 错配；UiDump 增加字重/样式/字形覆盖断言；新增 D-082；提交 |
