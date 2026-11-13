@@ -4,10 +4,28 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>HotspotMeter</AssemblyName>
     <RootNamespace>HotspotMeter.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\HotspotMeter.ico</ApplicationIcon>
+    <!--
+      WFO0003：WinForms 建议改用 ApplicationHighDpiMode 配置 DPI。
+      本程序的 DPI 感知由 WPF 的 app.manifest（PerMonitorV2）负责，
+      WinForms 只用于 NotifyIcon，因此保留 manifest 并显式关闭该建议。
+    -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
+
+  <!--
+    UseWindowsForms 会启用 System.Windows.Forms / System.Drawing 的隐式 using，
+    这与 WPF 的同名类型（Application、Color、MessageBox 等）冲突。
+    只在托盘实现里显式别名引用，其余代码保持纯 WPF。
+  -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\HotspotMeter.Core\HotspotMeter.Core.csproj" />
@@ -16,6 +34,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <!-- 图标与图片作为资源嵌入，托盘/窗口都从程序集读取。 -->
+  <ItemGroup>
+    <Resource Include="Assets\HotspotMeter.ico" />
+    <Resource Include="Assets\HotspotMeter-256.png" />
   </ItemGroup>
 
 </Project>

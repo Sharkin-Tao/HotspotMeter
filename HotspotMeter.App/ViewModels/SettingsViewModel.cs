@@ -1,0 +1,312 @@
+using System.ComponentModel;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Windows.Input;
+using System.Windows.Media;
+using HotspotMeter.App.Models;
+using HotspotMeter.App.Services;
+
+namespace HotspotMeter.App.ViewModels;
+
+/// <summary>
+/// 设置窗口的视图模型。只做"读数 → 校验 → 交回宿主"，
+/// 不直接修改窗口、不访问数据库，也不保存任何第二份状态。
+/// </summary>
+public sealed class SettingsViewModel : INotifyPropertyChanged
+{
+    private static readonly Brush PresetNormal = Freeze(Color.FromRgb(0x1F, 0x1F, 0x23));
+    private static readonly Brush PresetSelected = Freeze(Color.FromRgb(0x2C, 0x2C, 0x31));
+
+    private readonly ISettingsHost _host;
+
+    private string _widthText = string.Empty;
+    private string _heightText = string.Empty;
+    private string? _validationMessage;
+    private string _currentSizeText = string.Empty;
+    private string _aspectRatioText = string.Empty;
+    private double _previewWidth;
+    private double _previewHeight;
+    private double _previewCornerRadius;
+    private string _pinButtonText = string.Empty;
+    private string _pinStatusText = string.Empty;
+    private string _positionText = string.Empty;
+    private bool _startupVisible;
+    private bool _autoFitTaskbar;
+    private string _taskbarStatusText = string.Empty;
+    private string _autoFitHint = string.Empty;
+
+    public SettingsViewModel(ISettingsHost host)
+    {
+        _host = host;
+
+        ApplyCustomCommand = new RelayCommand(ApplyCustom);
+        UseMiniCommand = new RelayCommand(() => ApplyPreset(CapsuleSize.Mini));
+        UseSmallCommand = new RelayCommand(() => ApplyPreset(CapsuleSize.Small));
+        UseStandardCommand = new RelayCommand(() => ApplyPreset(CapsuleSize.Default));
+        UseLargeCommand = new RelayCommand(() => ApplyPreset(CapsuleSize.Large));
+        TogglePinCommand = new RelayCommand(TogglePin);
+        ResetPositionCommand = new RelayCommand(() =>
+        {
+            _host.ResetPosition();
+            Refresh();
+        });
+
+        Refresh();
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public ICommand ApplyCustomCommand { get; }
+
+    public ICommand UseMiniCommand { get; }
+
+    public ICommand UseSmallCommand { get; }
+
+    public ICommand UseStandardCommand { get; }
+
+    public ICommand UseLargeCommand { get; }
+
+    public ICommand TogglePinCommand { get; }
+
+    public ICommand ResetPositionCommand { get; }
+
+    public string WidthText
+    {
+        get => _widthText;
+        set => Set(ref _widthText, value);
+    }
+
+    public string HeightText
+    {
+        get => _heightText;
+        set => Set(ref _heightText, value);
+    }
+
+    public string? ValidationMessage
+    {
+        get => _validationMessage;
+        private set
+        {
+            if (Set(ref _validationMessage, value))
+            {
+                OnPropertyChanged(nameof(HasValidationMessage));
+            }
+        }
+    }
+
+    public bool HasValidationMessage => !string.IsNullOrEmpty(ValidationMessage);
+
+    public string CurrentSizeText
+    {
+        get => _currentSizeText;
+        private set => Set(ref _currentSizeText, value);
+    }
+
+    public string AspectRatioText
+    {
+        get => _aspectRatioText;
+        private set => Set(ref _aspectRatioText, value);
+    }
+
+    public string PinButtonText
+    {
+        get => _pinButtonText;
+        private set => Set(ref _pinButtonText, value);
+    }
+
+    public string PinStatusText
+    {
+        get => _pinStatusText;
+        private set => Set(ref _pinStatusText, value);
+    }
+
+    public string PositionText
+    {
+        get => _positionText;
+        private set => Set(ref _positionText, value);
+    }
+
+    public bool StartupVisible
+    {
+        get => _startupVisible;
+        set
+        {
+            if (!Set(ref _startupVisible, value))
+            {
+                return;
+            }
+
+            _host.SetShowCapsuleOnStartup(value);
+        }
+    }
+
+    public double PreviewWidth
+    {
+        get => _previewWidth;
+        private set => Set(ref _previewWidth, value);
+    }
+
+    public double PreviewHeight
+    {
+        get => _previewHeight;
+        private set => Set(ref _previewHeight, value);
+    }
+
+    public double PreviewCornerRadius
+    {
+        get => _previewCornerRadius;
+        private set => Set(ref _previewCornerRadius, value);
+    }
+
+    /// <summary>
+    /// 自动适配开关。写入后立即让宿主重排一次窗口，因此设置窗口里能立刻看到效果。
+    /// </summary>
+    public bool AutoFitTaskbar
+    {
+        get => _autoFitTaskbar;
+        set
+        {
+            if (!Set(ref _autoFitTaskbar, value))
+            {
+                return;
+            }
+
+            _host.SetAutoFitTaskbar(value);
+
+            // 重排会改变尺寸/位置，必须把只读文本刷新到最新，否则界面显示旧值。
+            Refresh();
+        }
+    }
+
+    public string TaskbarStatusText
+    {
+        get => _taskbarStatusText;
+        private set => Set(ref _taskbarStatusText, value);
+    }
+
+    public string AutoFitHint
+    {
+        get => _autoFitHint;
+        private set => Set(ref _autoFitHint, value);
+    }
+
+    public Brush MiniPresetBackground => SelectedBackground(CapsuleSize.Mini);
+
+    public Brush SmallPresetBackground => SelectedBackground(CapsuleSize.Small);
+
+    public Brush StandardPresetBackground => SelectedBackground(CapsuleSize.Default);
+
+    public Brush LargePresetBackground => SelectedBackground(CapsuleSize.Large);
+
+    /// <summary>
+    /// 从宿主重新读数。胶囊右键菜单也能改固定状态，窗口激活时必须同步，
+    /// 否则设置窗口会显示过期状态。
+    /// </summary>
+    public void Refresh()
+    {
+        var size = _host.CurrentSize;
+        WidthText = size.Width.ToString("0.#", CultureInfo.CurrentCulture);
+        HeightText = size.Height.ToString("0.#", CultureInfo.CurrentCulture);
+        CurrentSizeText = $"{size.Width:0.#} × {size.Height:0.#} DIP";
+        AspectRatioText = $"宽高比 {size.AspectRatioValue:0.00}";
+
+        // 预览矩形按比例塞进 236×72 的槽位，保持真实胶囊的观感。
+        var scale = Math.Min(236 / size.Width, 72 / size.Height);
+        PreviewWidth = Math.Round(size.Width * scale, 1);
+        PreviewHeight = Math.Round(size.Height * scale, 1);
+        PreviewCornerRadius = Math.Round(20 * scale, 1);
+
+        PinStatusText = _host.IsPinned ? "已固定：胶囊不可拖动" : "未固定：可按住胶囊拖动";
+        PinButtonText = _host.IsPinned ? "解除固定" : "固定位置";
+        _startupVisible = _host.ShowCapsuleOnStartup;
+        OnPropertyChanged(nameof(StartupVisible));
+
+        _autoFitTaskbar = _host.AutoFitTaskbar;
+        OnPropertyChanged(nameof(AutoFitTaskbar));
+        TaskbarStatusText = _host.TaskbarStatusText;
+        AutoFitHint = _host.IsPinned && _host.AutoFitTaskbar
+            ? "已固定：位置锁定，自动定位不会移动窗口；尺寸仍会随任务栏高度变化。"
+            : "首次开启会按任务栏高度调整尺寸，并放到屏幕底部偏左；之后位置以你的拖动为准，不会自动寻找空隙。";
+
+        var (left, top) = _host.CapsulePosition;
+        PositionText = double.IsNaN(left) || double.IsNaN(top)
+            ? "尚未定位"
+            : $"屏幕坐标 {left:0}, {top:0} DIP";
+
+        OnPropertyChanged(nameof(MiniPresetBackground));
+        OnPropertyChanged(nameof(SmallPresetBackground));
+        OnPropertyChanged(nameof(StandardPresetBackground));
+        OnPropertyChanged(nameof(LargePresetBackground));
+    }
+
+    private void ApplyPreset(CapsuleSize size)
+    {
+        ValidationMessage = null;
+        _host.ApplySize(size);
+        Refresh();
+    }
+
+    private void ApplyCustom()
+    {
+        if (!TryParse(WidthText, out var width))
+        {
+            ValidationMessage = "宽度必须是数字。";
+            return;
+        }
+
+        if (!TryParse(HeightText, out var height))
+        {
+            ValidationMessage = "高度必须是数字。";
+            return;
+        }
+
+        // 0.1 DIP 精度足够；超出范围的输入由 CapsuleSize 统一校验，并给出中文原因。
+        width = Math.Round(width, 1);
+        height = Math.Round(height, 1);
+
+        if (!CapsuleSize.TryCreate(width, height, out var size, out var error))
+        {
+            ValidationMessage = error;
+            return;
+        }
+
+        ValidationMessage = null;
+        _host.ApplySize(size);
+        Refresh();
+    }
+
+    private void TogglePin()
+    {
+        _host.SetPinned(!_host.IsPinned);
+        Refresh();
+    }
+
+    private Brush SelectedBackground(CapsuleSize preset) =>
+        _host.CurrentSize.IsNearly(preset) ? PresetSelected : PresetNormal;
+
+    private static bool TryParse(string text, out double value) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value) ||
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+
+    private static Brush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
+        field = value;
+        OnPropertyChanged(propertyName);
+        return true;
+    }
+
+    private void OnPropertyChanged(string? propertyName) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+}

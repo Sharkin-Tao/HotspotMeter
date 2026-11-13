@@ -448,3 +448,486 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 ### 6. 下一步
 
 等待用户代码审查与 3B-5a 最终验收；通过后才提交并推送。3B-5b 未获授权。
+
+---
+
+## 2026-11-13 阶段 4C-1：悬浮胶囊首版
+
+### 1. 目标与范围
+
+按用户 m02357 的授权，先实现悬浮胶囊（宽型绿色圆角矩形），完成后暂停等验收；
+本轮不做统计窗口、设置窗口、历史写入管线、托盘或隐藏功能。
+
+### 2. 新增 / 修改文件
+
+- `HotspotMeter.App/Theme.xaml`：深色色板（`BgApp`、`BgCard`、`BgPill`、`AccentGreen`、
+  `StateConnected`、`StateDisconnected` 等）与 `CapsuleMenuItemStyle`。
+- `HotspotMeter.App/ViewModels/CapsuleViewModel.cs`：连接状态、会话流量、说明文字、
+  上下行速度、绿/红背景、固定状态；`Apply(MonitorSnapshot?)`、`ApplySessionStarted`、
+  `ApplySessionEnded`、`SetWarning`、`ShowUnavailable`。
+- `HotspotMeter.App/Views/CapsuleWindow.xaml(.cs)`：320×104 DIP、圆角 20、无边框透明、
+  Topmost、不占任务栏；左上 Wi-Fi 图标（未连接叠加斜杠）+ 状态；左中 34 号会话流量 +
+  “已使用流量”；右下速度；右键菜单（流量统计/设置暂禁用、固定/解除、退出）。
+- `HotspotMeter.App/Services/WindowStateStore.cs`：位置 + 固定状态 JSON 存储。
+- `HotspotMeter.App/Services/MonitorSessionService.cs`：选目标热点、构造并启动
+  `MonitorEngine`、把 7 类事件切回 UI 线程；退出时停止引擎。
+- `HotspotMeter.App/Services/UiDump.cs`：开发期布局诊断（环境变量开关，默认不启用）。
+- `App.xaml`（合并 Theme）、`App.xaml.cs`（组合根，`ShutdownMode=OnExplicitShutdown`）。
+
+### 3. 关键实现与修正
+
+- 首次位置按 Win32 工作区计算：DPI=1.5 下若把物理像素当 DIP 会跑到屏外，已按 D-047 修正。
+- 行高不足导致数字与“已使用流量”重叠：改为两行 Grid（34 号字、`LineHeight=40`），
+  速度与说明同处最后一行、左右分置。
+- 无会话时数字 `--`、说明“已使用流量”；有会话后显示真实累计与速度。
+- 目标热点暂取“已连接且信号最强”的 Wi-Fi（D-048），不按 SSID 猜测。
+
+### 4. 验证
+
+- `dotnet build HotspotMeter.App`：0 警告 0 错误。
+- `dotnet test`：**348/348 通过**（UI 改动不影响既有测试）。
+- 真机运行（DPI 1.5）：`window.left=1362.7 top=890.7 actual=320x104`；`已连接`、
+  `5.38 KB`、`↓1.59 KB/s ↑1.6 KB/s`；`PrintWindow` 截图
+  `docs/images/capsule-connected.png`（480×156 物理像素）。
+- 文字区域实测（物理像素）：状态 y=25..45、数字 y=63..99、说明+速度 y=116..133，
+  右侧速度距窗口右边缘 28 px（≈18.7 DIP），无越界或重叠。
+
+### 5. 未验证 / 已知边界
+
+- 断开热点后的红色 + “上次会话”状态：本轮未切断网络，未做真机验证。
+- 拖动、固定后禁拖、位置记忆的交互路径未自动化测试；位置夹取只验证了首次定位。
+- 透明窗口的鼠标命中（透明区域是否穿透）未单独验证。
+- 本会话视觉引擎不可用，未做肉眼观感确认；截图与坐标只能证明结构正确。
+
+### 6. 下一步
+
+等待用户查看胶囊实际效果。确认后再实现统计窗口（4C-2）；统计/设置菜单项在数据能力
+接通前保持禁用，不伪造数据。
+## 2026-11-13 阶段 4C-2：系统托盘、设置窗口与胶囊尺寸自定义
+
+### 1. 任务范围
+
+在 4C-1 胶囊基础上增加托盘入口、独立设置窗口、胶囊尺寸预设/自定义、固定与解除固定交互；
+胶囊菜单移除“设置”，隐藏胶囊不停止引擎，统计窗口本轮不实现。
+
+### 2. 新增 / 修改文件
+
+- `HotspotMeter.App/Assets/HotspotMeter.ico`、`HotspotMeter-256.png`、`tools/IconGen/generate-icon.ps1`、
+  `docs/images/icon-512.png`。
+- `HotspotMeter.App/Models/CapsuleSize.cs`：尺寸预设、范围、宽高比与缩放系数；`TryCreate` 校验。
+- `HotspotMeter.App/Services/AppIcons.cs`、`TrayIconService.cs`、`DarkTitleBar.cs`、`ISettingsHost.cs`。
+- `HotspotMeter.App/ViewModels/SettingsViewModel.cs`、`RelayCommand.cs`。
+- `HotspotMeter.App/Views/SettingsWindow.xaml(.cs)`。
+- `WindowStateStore.cs` 扩展为可空字段的兼容 JSON（Left/Top/IsPinned/Width/Height/ShowCapsuleOnStartup）。
+- `CapsuleWindow.xaml(.cs)`：尺寸绑定改为代码赋值；菜单改为四项；固定文案动态。
+- `App.xaml.cs`：实现 `ISettingsHost`、托盘、设置单实例；`App.UiSelfTest.cs` 扩展自检。
+
+### 3. 关键实现与修正
+
+- 设置入口迁移到托盘；胶囊菜单不再含“设置”，用自检断言 `menuHasSettings=False`。
+- `Window.Width/Height` 绑定会被 WPF 窗口布局覆盖（实测 320×744.7，尺寸切换无效）；
+  改为在 `DataContextChanged` 与 `ApplySize` 中直接赋值，尺寸切换后窗口真实变化（280×92 / 400×130）。
+- 位置越界夹取验证：模拟 (99999,99999) → (1378.7,954.7)，(-99999,-99999) → (8,8)（150% DPI 单屏）。
+- 隐藏后引擎继续采样：隐藏 1.6 s 期间快照计数 6→7；显示后位置尺寸不变。
+- 启动隐藏：`ShowCapsuleOnStartup=false` 时托盘存在、窗口不显示、引擎运行。
+- 重启恢复：写入 400×130 后第二个进程 dump 显示 `actual=400x130`。
+
+### 4. 验证
+
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet test`：348/348 通过。
+- 自检产物：`artifacts/ui-selftest9.txt`、`capsule-*.png`、`settings-window.png`。
+- 视觉证据：`docs/images/capsule-standard-4c2.png`（PrintWindow，480×156；中心 #1E8E3E，圆角区透明被渲染成黑）；
+  像素统计确认图标白色笔画与三行文字带（y≈28–44 / 64–96 / 116–132 物理像素）。
+
+### 5. 未验证 / 已知边界
+
+- 鼠标真实拖拽、固定后禁拖：仅代码守卫（`IsPinned` 时直接返回），未做自动化 UI 操作。
+- 多显示器与 100/125/200% DPI：当前机器只有 150% 单屏，未实测。
+- 托盘图标在通知区域的实际观感与菜单渲染：只验证 `NotifyIcon.Visible=True` 与菜单项文本。
+- 视觉引擎仍不可用，PNG 仅作结构证据，不等同人眼审美确认。
+- 统计窗口、“流量统计”菜单项、用户选择目标热点仍未实现。
+
+### 6. 下一步
+
+等待用户验收本轮交互与视觉；确认后进入统计窗口（4C-3），并开始接入快照/会话持久化管线。
+
+## 2026-11-13 阶段 4C-3：四档等比例缩放与右键菜单闪退修复
+
+> 编号说明：本轮按用户要求处理"胶囊等比例缩小 + 右键闪退"，占用 4C-3；
+> 统计窗口顺延，不影响 `docs/08` 的阶段编号。
+
+### 1. 任务范围
+
+保留现有胶囊样式与布局，只做整体等比例缩小；新增迷你档并把四档统一到 320 : 104；
+修复胶囊右键菜单闪退并给出根因；不修改 MonitorEngine、数据库 Schema、统计逻辑与托盘交互。
+
+### 2. 根因与修复
+
+- 复现：对胶囊发送真实右键（`SendInput`）后进程退出；`logs/crash-20261113-*.log` 记录
+  `InvalidOperationException: 用于类型"MenuItem"的样式不能应用于类型"Separator"`，
+  堆栈 `ItemsControl.ApplyItemContainerStyle` ← `Panel.GenerateChildren` ← `Popup.CreateWindow`
+  ← `ContextMenu.OnIsOpenChanged` ← `PopupControlService.ProcessMouseUp`。
+- 根因：`ContextMenu.ItemContainerStyle` 把 `TargetType=MenuItem` 的样式套到了 `Separator` 容器上，
+  菜单首次布局必抛异常；与数据、DPI、点击位置均无关。
+- 修复：删除 `ItemContainerStyle`，改在 `ContextMenu.Resources` 里放隐式 `MenuItem` 样式；
+  `Separator` 用默认样式。异常仍按原路径抛出，没有 try/catch 吞掉。
+- 取证设施：`Services/CrashLog.cs` 记录三处未处理异常（Dispatcher/AppDomain/UnobservedTask），
+  只写堆栈，不改变程序行为。
+
+### 3. 尺寸与缩放
+
+- `Models/CapsuleSize.cs`：`Mini 220×71.5`、`Small 280×91`、`Default 320×104`、`Large 400×130`；
+  自定义 220–480 × 71.5–156；比例 320/104，容差 1.2%；`Scale = clamp(min(W/320, H/104), 0.65, 1.6)`；
+  `TryCreate` 对越界与比例错误分别给中文原因（含建议高度/宽度）；`FromPersisted` 把旧尺寸按宽度映射到统一比例。
+- `CapsuleViewModel.ApplyMetrics` 用同一系数派生全部视觉量，XAML 结构未改；没有单行化、没有隐藏元素。
+- 设置窗口增加“迷你”预设按钮与选中态；提示改为“宽度 220–480 DIP · 高度 71.5–156 DIP · 宽高比固定为 320 : 104”。
+
+### 4. 验证
+
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误；`dotnet test`：348/348。
+- 自检 `artifacts/ui-selftest12/selftest.txt`：
+  - 尺寸实测 220×71.5 / 280×91.3 / 320×104 / 400×130；自定义 380×123.3；字号 23.4 / 29.8 / 34 / 42.5 / 40.4。
+  - 每档 `UiDump.CheckLayout` 均 `layout=ok texts=7`（全部文本在窗口内、两两不重叠）。
+  - 右键菜单 `IsOpen` 连续三开三关无异常；菜单仍为四项且 `menuHasSettings=False`。
+  - 校验文案：`宽度需在 220–480 DIP 之间。`、`高度需在 71.5–156 DIP 之间（宽度 320 对应 104）。`、
+    `宽高比需保持 320 : 104（约 3.08 : 1）。当前 380 × 130，请把高度改为 123.5，或把宽度改为 400。`
+  - 固定文案、隐藏后引擎继续（快照 7→9）、设置单实例、托盘入口、重启恢复 400×130 均保持通过。
+- 截图（150% DPI 原生像素）：`docs/images/capsule-size-{mini,small,standard,large}.png` 与
+  `docs/images/capsule-size-comparison.png`。
+
+### 5. 未验证 / 已知边界
+
+- 本会话 `SendInput` 合成的鼠标事件无法送达该窗口（拖拽与右键均无响应；UIA 确认窗口 enabled、非 offscreen），
+  因此真实鼠标右键与拖拽需用户手动验收；菜单修复的证据是同一开菜单代码路径的三开三关与修复前崩溃日志对比。
+- 迷你档状态文字 8.9、说明 7.6（150% DPI 下约 13/11 物理像素），是按比例缩放的必然结果；
+  若实际观感偏小，需要重新定义"最小可读字号"，那会破坏严格等比例，需用户决定。
+- 仅 150% 单屏；100/125/200% DPI 与多显示器未实测。
+- 视觉引擎仍不可用，截图仅作结构证据。
+
+### 6. 下一步
+
+等待用户验收四档尺寸与右键菜单；确认后进入统计窗口，并开始接入快照/会话持久化管线。
+
+---
+
+## 2026-11-13 阶段 4C-4：任务栏自动检测与胶囊自适应
+
+### 1. 目标
+
+识别任务栏位置/厚度/所属显示器/DPI，按任务栏附近可用空间等比缩放胶囊并自动停靠；提供"自动适配任务栏"开关；
+不嵌入任务栏、不改 Explorer、不动监控与数据层。
+
+### 2. 实现
+
+- `HotspotMeter.Core/Layout/TaskbarLayout.cs`：纯几何计算（输入显示器矩形/工作区/任务栏矩形/边缘/自动隐藏/DPI），
+  输出 `CapsulePlacement`（DIP 位置、宽高、缩放系数、放置类型、边缘、可读说明）。
+- `HotspotMeter.App/Services/TaskbarDetector.cs`：`SHAppBarMessage(ABM_GETTASKBARPOS/ABM_GETSTATE)` +
+  `MonitorFromWindow`/`MonitorFromRect` + `GetMonitorInfo` + `GetDpiForMonitor`（失败退 `GetDpiForWindow`）；
+  失败回退主屏工作区推断并记录 `Source`/`Error`。
+- `CapsuleWindow`：`WndProc` 监听 `WM_SETTINGCHANGE(0x1A, 0x2F)`、`WM_DISPLAYCHANGE`、`WM_DPICHANGED`，
+  600 ms 防抖后重算；固定状态暂停自动停靠；手动改尺寸/拖动会关闭自动适配；关闭自动适配恢复手动尺寸。
+- `WindowStateStore`：新增可空 `AutoFitTaskbar`、`ManualLeft/Top/Width/Height`，旧 JSON 无这些字段时按默认处理。
+- 设置窗口："悬浮胶囊行为"新增自动适配开关、当前检测结果、固定时暂停说明。
+
+### 3. 修复的真实缺陷
+
+- `GetMonitorInfo` 原 P/Invoke 使用 `out MonitorInfo` 且未设置 `cbSize`，导致恒返回 false、检测始终走兜底；
+  改为 `new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() }` + `ref info`。修复后首次拿到真实任务栏矩形。
+- 右键菜单 `Separator` 样式崩溃已在此前修复（D-055），本轮连续开关与自动适配重排后均未再产生崩溃日志。
+
+### 4. 验证
+
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误；`dotnet test`：**364/364 通过**（新增 12 个布局测试）。
+- UI 自检 `artifacts/ui-selftest18/selftest.txt`：
+  - 合成四边停靠 expected 与 actual 完全一致：底部 (1378.7, 912)、顶部 (1378.7, 50.7)、
+    左侧 (50.7, 8)、右侧 (1336, 8)，均 320×104 且 `layout=ok texts=7`。
+  - 200% DPI 合成期望 (1592, 1040)、副屏期望 (4152, 1288)，实际被本机真实屏幕夹取到 (1378.7, 954.7)；
+    这是合成坐标超出 1707×1067 虚拟屏所致，属于夹取逻辑的预期行为，不是布局计算错误。
+  - 真实检测：`底部任务栏 · 150% · 工作区 1707×1019 DIP`；胶囊停在 `1378.7, 906.7`，320×104，`layout=ok`。
+  - 固定状态再触发检测位置不变（`pinnedStable=True`）；设置 VM 开关 → 启用并持久化 `AutoFitTaskbar=true`；
+    `WM_SETTINGCHANGE` 重排前后位置一致、无异常；关闭持久化为 false。
+  - 手动尺寸保护：400×130 → 开自动适配变 320×104 → 关闭恢复 400×130，`layout=ok`。
+- 截图：`docs/images/capsule-autofit-bottom.png`（真实底部任务栏停靠）、`docs/images/settings-window-autofit.png`。
+
+### 5. 未验证 / 已知边界
+
+- 真实的多显示器混合 DPI、任务栏自动隐藏、任务栏被拖到顶部/左侧/右侧：仅通过合成输入与单元测试覆盖，
+  没有在物理多屏环境实测；自动隐藏的真实任务栏状态无法在本机稳定复现。
+- `SendInput` 合成鼠标事件在本会话送不到窗口，真实鼠标拖动/右键仍需人工验收。
+- 100%、125%、200% DPI 未在真实缩放下跑过（布局计算按输入 DPI 处理并有单测）。
+- 视觉引擎仍不可用；截图仅作结构证据。
+
+## 2026-11-13 阶段 4C-5：速度竖排、深色滚动条/右键菜单、任务栏适配与遮挡修复
+
+### 1. 需求
+
+- 下载/上传速度从右下角横排改到会话流量数字右侧，上下两行竖排（下载在上），四档尺寸与自定义范围不变。
+- 设置窗口滚动条、胶囊右键菜单统一深色，不允许白色轨道、白边或黑白分割。
+- 排查"任务栏自动适配没有效果"与实际遮挡问题的根因，而不是重复加功能。
+
+### 2. 诊断结论
+
+- 自动适配并非未执行：4C-4 的输出约为 (1378.7, 906.7)，与手动默认右下角 (约 1363, 891) 几乎重合，
+  且 150% 单屏下 `MaxScale=1` 不改变尺寸，所以视觉上像"没生效"。
+- 遮挡来自两处：`ClampToScreen` 用虚拟屏幕，允许窗口压在任务栏上；置顶只在显示时用 `Topmost` 切换，
+  任务栏被点击后可能盖住胶囊。
+- 菜单白色区域来自 `ContextMenu` 自身的系统模板，不是 `MenuItem` 背景。
+- 滚动条白色来自系统默认 `ScrollBar` 模板。
+- 多屏检测总取任务栏所在显示器，副屏窗口会被算到主屏。
+
+### 3. 修改
+
+- `CapsuleWindow.xaml`：速度区改为 `SpeedBlock` 纵向 `StackPanel` + 两个三列 `Grid`，列宽用
+  `SharedSizeGroup` 对齐；绑定新增 `SpeedBlockMargin` / `SpeedLabelMargin` / `SpeedRowSpacing`。
+- `CapsuleViewModel`：按缩放系数派生上述间距；删除旧 `SpeedGapMargin`。
+- `Theme.xaml`：新增深色 `ScrollBar` 模板与隐式样式；新增 `CapsuleContextMenuStyle`（替换整个模板）、
+  `CapsuleMenuSeparatorStyle`；保留 `CapsuleMenuItemStyle`，仍不使用 `ItemContainerStyle`。
+- `TaskbarLayout.cs`：横向任务栏靠左、纵向靠上停靠，自动隐藏时额外让出"间距 + 任务栏厚度"。
+- `TaskbarDetector.cs`：以窗口所在显示器为准，任务栏矩形不属于该显示器时走推断。
+- `CapsuleWindow.xaml.cs`：`ClampCurrentPosition` 改用工作区；新增 `EnsureTopmost()`（`SetWindowPos`，
+  `SWP_NOACTIVATE`）；`ShowCapsule` 不再切换 `Topmost` 抢焦点；`ApplyPlacement` 不再二次夹取；
+  拖动结束夹取并置顶；`DescribeTaskbar` 每次现场检测。
+- `UiDump`：新增 `DescribeSpeedBlock`（两行竖排/在窗口内断言）、`DescribeScrollBar`（滚动条模板与宽度）、
+  `SaveElementPng`（渲染 `ContextMenu` 这类弹出层）。
+
+### 4. 验证
+
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误；`dotnet test`：**364/364 通过**。
+- UI 自检 `artifacts/ui-selftest21/selftest.txt`：
+  - 四档 + 自定义 380×123.5 全部 `layout=ok texts=9`；每档
+    `speedBlock ... stacked=True inside=True verdict=ok`（下载行在上、上传行在下）。
+  - 菜单连续开关 10 次无异常；`contextMenu.background=#FF1F1F23`、`border=#FF3A3A3F`、`template=True`。
+  - 设置滚动条 `scrollable=277.3 viewport=431.3 width=10 visible=True thumbFill=#FF3A3A3F`。
+  - 合成四边 expected 与 actual 完全一致：底部 (8, 908)、顶部 (8, 54.7)、左侧 (54.7, 8)、右侧 (1332, 8)；
+    200% (8, 1036) 与副屏 (1928, 1284) 也不再被本机虚拟屏夹取（`ApplyPlacement` 不再二次夹取）。
+  - 真实检测 `底部任务栏 · 150% · 工作区 1707×1019 DIP`，自动停靠 (8, 902.7)；
+    `reAdapt` 前后一致无异常；手动尺寸保护 400×130 恢复成功。
+- 截图（150% DPI 原生像素）：`docs/images/capsule-size-{mini,small,standard,large}.png`、
+  `capsule-speed-layout.png`、`capsule-autofit-bottom.png`、`settings-window-dark-scrollbar.png`、
+  `context-menu-dark.png`。
+
+### 5. 未验证 / 已知边界
+
+- 真实鼠标右键、拖动、固定后禁拖仍未自动化（`SendInput` 在本会话送不到该窗口）；菜单与拖动逻辑只由
+  同一代码路径 + 自检间接验证，需人工验收。
+- "点击其他程序后不再被任务栏遮挡"依赖 `SetWindowPos` 置顶，属于 Windows Shell 层级行为，需真实点击验证。
+- 多显示器混合 DPI、自动隐藏任务栏仍只有合成输入与单元测试，没有物理环境实测。
+- 100%/125%/200% 真实缩放未跑过；截图圆角区为黑色是 `PrintWindow` 不保留透明所致，不代表实际渲染。
+
+## 2026-11-13 阶段 4C-6：速度块与流量数字的垂直中心对齐
+
+### 1. 需求
+
+- 右侧"下载 / 上传"竖向速度块的整体垂直中心，必须与左侧**流量数字控件**的中心在同一水平线上；
+  基准不是"数字 + 已使用流量"的整块区域，也不是窗口中心。
+- 不允许用固定 Margin 模拟对齐，需用 Grid / VerticalAlignment 实现；四档与自定义尺寸保持一致。
+
+### 2. 修改
+
+- `CapsuleWindow.xaml`：Row1 重构为两行两列 `Grid`：`TrafficValue`（新增名称）与 `SpeedBlock` 同处第 0 行，
+  两者均 `VerticalAlignment="Center"`；说明文字独占第 1 行，不再参与速度块的对齐。
+  速度块加 `UseLayoutRounding="False"`，消除 150% 缩放下 5 DIP 偏移被舍入为 5.33 DIP 的 0.33 DIP 误差。
+- `UiDump.cs`：新增 `CheckSpeedAlignment(window)`，比较两个控件矩形的垂直中心，输出
+  `trafficCenterY / speedCenterY / delta / 高度`，`|delta| ≤ 0.5 DIP` 记为通过。
+- `App.UiSelfTest.cs`：四档 + 自定义尺寸各输出一行 `speedAlign`。
+
+### 3. 验证
+
+- 自检 `artifacts/ui-selftest22b/selftest.txt`：
+  - 迷你 220×71.5：`delta=0`（37 / 37，速度块高 22.2）
+  - 小型 280×91：`delta=0`（48 / 48）
+  - 标准 320×104：`delta=0`（53.33 / 53.33）
+  - 大型 400×130：`delta=0`（67.67 / 67.67）
+  - 自定义 380×123.5：`delta=0`（64.33 / 64.33）
+  - 每档 `layout=ok texts=9`，没有因对齐产生新的重叠或越界。
+- 构建：`dotnet build HotspotMeter.sln` 0 警告 0 错误；单元测试 364/364 不受影响。
+- 截图更新：`docs/images/capsule-speed-aligned.png`、`capsule-speed-layout.png`、
+  `capsule-size-{mini,small,large,custom}.png`。
+
+### 4. 未验证
+
+- 视觉引擎仍不可用，未做人眼级像素比对；对齐结论来自控件矩形中心（结构证据）。
+- 仅 150% 单屏真实运行过；100%/125%/200% 由 `UseLayoutRounding="False"` 与同一布局规则推算，
+  未在真实缩放环境实测。
+
+## 2026-11-13 阶段 4C-7：任务栏内部显示的可行性验证
+
+### 1. 目的与边界
+
+- 用户希望胶囊显示在 Windows 11 任务栏矩形内部；本阶段只做技术可行性验证，不改产品窗口/服务。
+- 约束：不注入 Explorer、不改系统文件、不使用未验证的私有接口；不改现有 CapsuleWindow、四档尺寸、
+  设置窗口、统计窗口与托盘；不 commit/push。
+
+### 2. 调研
+
+- 微软 `Taskbar Extensions` 文档（2021-01-07 更新）只列出 Jump List、缩略图工具栏、图标叠加、进度条与
+  通知区域；DeskBand 属 Windows 7 时代机制，文档未声明 Windows 11 支持，且实现需要把 COM DLL 加载进
+  Explorer，违反本项目"不注入"约束。
+- 未找到微软公开的"第三方任意 UI 嵌入任务栏"接口；AppBar 是独立应用栏，不是任务栏内部区域。
+- 环境限制：`web_search` 不可用（HTTP 402），调研以微软文档直连 + 本机实测为主。
+
+### 3. 实验
+
+- 新增独立项目 `tools/TaskbarOverlayProbe`（WinExe、net10.0-windows、WPF+WinForms、PerMonitorV2
+  manifest，不加入解决方案、不引用产品项目）。
+- 探针按 `SHAppBarMessage(ABM_GETTASKBARPOS)` 取任务栏矩形，把置顶透明窗口放进任务栏内部；每 2 s 记录
+  overlay/taskbar 矩形、`WindowFromPoint` 命中、z 序排名、topmost 位、前台窗口，并用
+  `BitBlt(CAPTUREBLT)` 截任务栏区域。
+- 实测（2560×1600、150% DPI）：任务栏 `0,1528,2560,1600`（72 px）、工作区 `2560×1528`；探针
+  `197×64`（131.3×42.7 DIP）放在 `(249,1532)`，`hitIsOverlay=True`，z 序在任务栏之上。
+- 交互：`mouse_event` 点击/拖拽被探针接收，右键弹出 WPF `ContextMenu`，`Escape` 关闭；
+  `SetForegroundWindow(Progman)` 后探针仍在任务栏之上。
+- UIA 避让：只取任务栏中可见 `Button`（22 个）后，空隙为 237..781，胶囊放在 249，未遮挡开始按钮
+  （781,1528,68,72）。
+- Explorer 重启：杀旧进程后收到 `TaskbarCreated(0xC0AF)`，新任务栏 `hwnd=0x506DE`；重检测前探针被盖住
+  （`hit=Shell_TrayWnd`），约 0.8 s 后重检测 + `SetWindowPos(HWND_TOPMOST)` 恢复置顶。
+
+### 4. 结论
+
+- 不存在可公开、稳定、无需注入的任务栏内部嵌入接口。
+- 置顶透明窗口"视觉上在任务栏内部"可做到，但依赖 UIA 空隙和反复重断言，Explorer/任务栏更新后存在遮挡
+  与错位风险，且可能压住系统按钮；不满足"稳定、不破坏系统"的产品底线。
+- 产品继续使用独立置顶窗口 + 任务栏附近自动停靠；不把实验模式并入产品。见 `docs/09` D-068。
+
+### 5. 证据与状态
+
+- 证据：`artifacts/taskbar-probe-6/probe.log`、`docs/images/taskbar-overlay-probe.png`
+  （2564×76，胶囊绿色 `#1E8E3E`、白字，右侧图标未被遮挡）。
+- 产品代码未改：`dotnet build HotspotMeter.sln` 0 警告 0 错误；`dotnet test` 364/364。
+- `git status`：仅新增 `tools/TaskbarOverlayProbe/` 与既有未提交项；未 commit/push。
+- 未验证：任务栏自动隐藏、多显示器、混合 DPI、真实鼠标手动操作；这些只经过合成输入或单屏实测。
+
+---
+
+## 阶段 4C-8：自动适配只改尺寸 + 胶囊 UI 精简（2026-11-13）
+
+### 需求
+
+1. 「自动适配任务栏」保留开关与位置，开启后按当前显示器分辨率/DPI/任务栏厚度自动计算尺寸，位置仍由
+   用户拖动；关闭恢复原手动尺寸；开关持久化。
+2. 胶囊删除 Wi-Fi 图标、连接状态文字、"已使用流量"说明；流量数字放大，速度字号增大，下载在上、
+   上传在下，速度块中心仍与流量数字中心对齐；四档、自定义、自动模式都不裁切/不重叠。
+3. 扩展 UI 自检；更新文档；只提交本次任务改动，不 push。
+
+### 实现
+
+- 新增 `HotspotMeter.Core/Layout/TaskbarSizing.cs`：高度优先算法、三档密度、`FitsTaskbar` 与中文说明；
+  新增 12 个 xUnit 用例（`TaskbarSizingCalculatorTests`），总测试数 364 → 376。
+- `CapsuleViewModel` 删除状态/说明/图标属性，新增 `Density`/`ShowSpeedLabels`；正常排版字号改为
+  46s/54s（流量/行高）与 14s（速度），紧凑 30/34/12，最简 16/19/8.5。
+- `CapsuleWindow.xaml` 改为单行两列：左侧数字（`Viewbox` 只缩小不裁切），右侧速度两行；速度块与数字
+  仍在同一 Grid 行且 `VerticalAlignment=Center`。
+- `CapsuleWindow` 的自动适配改为只调 `ApplyAutoFitSize`（不改 Left/Top）；固定状态只锁位置；拖动后重算
+  尺寸；`TaskbarCreated` 动态消息触发重算+重断言置顶；`ApplyAutoFitForTest` 供合成几何自检。
+- 设置窗口说明文案改为"只调尺寸、位置由你拖动"，删除旧的"自动停靠/对侧角落"描述。
+
+### 验证与发现的缺陷
+
+- 第一次 UI 自检发现"固定状态尺寸保护"用例没有真正改变尺寸（沿用了上一合成用例的同一几何），
+  无法证明固定时尺寸仍可调；改成 120 DIP 任务栏几何后 `sizeChanged=True`，位置仍不变。
+- 构建：`dotnet build HotspotMeter.sln` 0 警告 0 错误（期间因运行中的 PID 33844 锁定 DLL，先停止进程）。
+- 测试：`dotnet test` 376/376 通过。
+- UI 自检：`artifacts/ui-selftest24/selftest.txt`（第二次运行）。
+  - 四档 + 自定义全部 `layout=ok texts=7`；`simplified ok=True`（无 Wi-Fi Path、无状态/说明文字）。
+  - 标准档：流量字号 46、速度 14；速度块 `202.3,31.4,99.7x41.2`，`stacked=True inside=True`，
+    `delta=0.33`；四档/自定义偏差均 ≤0.33 DIP（容差 0.5）。
+  - 最简长文本压力：`999.9 GB` 与 `999.9 MB/s` 在 220×71.5 下 `layout=ok`、速度块仍在窗口内。
+  - 真实自动适配：`taskbar.detect=底部任务栏 · 150% · 工作区 1707×1019 DIP ·
+    任务栏厚 48 DIP → 胶囊 44×135.4 DIP（最简排版）`；实际 `size=135.4x44`，位置保持 (240,240)。
+  - 8 组合成几何 expected 与 actual 完全一致：bottom 135.4×44、top 123.1×40（Fits=false）、
+    left/right 320×104、DPI200 135.4×44、secondMonitor 123.1×40、thin 123.1×40、tall 192.8×62.7；
+    全部 `moved=False`。
+  - 固定时自动适配：`pinnedStable=True sizeChanged=True size=320x104`。
+  - 关闭自动适配恢复 320×104；开启前手动 400×130 → 开自动 135.4×44 → 关自动 400×130。
+  - 设置 VM 开关：开启后 `size=135.4x44`、`persisted=True`；`WM_SETTINGCHANGE` 重排后位置不变、
+    `layout=ok`；关闭 `persisted=False`。
+  - 设置窗口 780×620 单实例、深色滚动条 `width=10 thumbFill=#FF3A3A3F`、三条中文校验文案正确；
+    隐藏 1.6 s 快照 18→19、位置/尺寸稳定；托盘点击打开设置 `count=1`；
+    重启预期 400×130 与 `ui-state.json` 一致。
+- 截图：`artifacts/ui-selftest24/capsule-{default,mini,small,large,standard,custom,long-text,autofit}.png`、
+  `settings-window.png`、`context-menu.png`。
+
+### 文档
+
+- `docs/02` §7.1 改写为精简结构；§7.5 改写为"只调尺寸、不自动停靠"；新增 §7.7 实测尺寸表。
+- `docs/09` 新增 D-069～D-073。
+- `PROJECT_CONTEXT` 状态改 4C-8、新增 4C-8 结果节与变更记录。
+
+### Git
+
+- 本次改动与此前 4C-1～4C-7 的未提交改动在同一批文件里（`CapsuleWindow.xaml.cs`、`CapsuleViewModel.cs`、
+  `Theme.xaml`、`SettingsWindow.xaml`、`UiDump.cs`、`App.UiSelfTest.cs` 等都被多轮任务修改），
+  无法在不误提交其他任务的前提下只暂存本次改动；按用户"无法安全拆分不得强行提交"的要求，**未 commit**。
+- 未 push。工作区保留全部改动，等待用户决定提交策略。
+
+### 未验证 / 限制
+
+- 自动模式在 48 DIP 任务栏上为 135.4×44、Minimal 密度、速度字号 8.5 DIP、隐藏"下载/上传"标签；
+  这是能放进任务栏的取舍，不等同于"完整信息在任何高度都清晰"。
+- 低于 44 DIP 任务栏厚度时只保证不裁切（`FitsTaskbar=false`），不宣称可读。
+- 真实 100%/125%/200% DPI、多显示器混合 DPI、纵向任务栏、自动隐藏任务栏没有实机环境，只有合成几何与
+  单屏 150% 实测。
+- 真实鼠标拖入任务栏、固定后禁拖、点击其他程序后的置顶效果仍需人工验收。
+
+## 阶段 4C-9：自动适配拖动边界、自动定位与层级恢复（2026-11-13）
+
+### 需求
+
+1. 自动适配开启时取消工作区底部的拖动纠正，允许胶囊进入任务栏矩形；保留显示器边界保护；关闭后恢复原行为。
+2. 自动适配开启时尽量保持胶囊在任务栏之上；只做事件驱动的一次性置顶，不用高频定时器抢 Z 序；监听 `TaskbarCreated`。
+3. 首次开启自动适配时定位到当前显示器底部任务栏偏左（约 120 DIP 偏移，垂直居中），之后以用户拖动为准；
+   重启恢复上次位置；再次开关可重新定位。
+4. 新增自动化测试；更新文档；按用户授权统一提交 4C-1～4C-9 全部未提交改动（不 push）。
+
+### 实现
+
+- 新增 `Core/Layout/TaskbarAnchor.cs`：仅底部任务栏；X=显示器左边界+120 DIP（左右 8 DIP 夹取），
+  Y=任务栏顶+(任务栏高−胶囊高)/2（上限显示器底−胶囊高，垂直不扣边距）；不支持的方向返回中文原因。
+- 新增 9 个 `TaskbarAnchorCalculatorTests`，测试总数 376 → **385**。
+- 新增 `Services/AppLog.cs`：`%LOCALAPPDATA%\HotspotMeter\logs\app.log`，1 MB 轮转，记录自动定位几何与
+  `TaskbarCreated`；IO 异常静默，不接管异常。
+- `CapsuleWindow`：`SetAutoFitTaskbar(true)` → 改尺寸 + `PositionAtAnchor` + 置顶；`ApplyAutoFitSize(positionAtAnchor:false)`
+  供启动恢复、`TaskbarCreated`、DPI/分辨率变化与拖动结束使用；`ClampCurrentPosition` 自动模式用显示器边界、
+  margin=0，普通模式工作区 +8 DIP；`RestorePosition` 按模式选择 margin；拖动结束统一走 `OnDragFinished`；
+  新增 `DragEndForTest`、`NotifyTaskbarCreatedForTest`、`ApplyAutoFitForTest(input, positionAtAnchor)`。
+- `SettingsViewModel.AutoFitHint` 改为"首次开启自动放到屏幕底部偏左，之后以拖动为准；不会自动寻找空隙"。
+
+### 验证与缺陷
+
+- 首轮 9 个 anchor 单测中 4 个失败：`maxTop` 仍扣 8 DIP、DPI200 期望误写 240（正确 120）；修正后 385/385。
+- 构建期间 PID 34808 锁定 DLL（MSB3027），停止进程后 0 警告 0 错误。
+- 第一次自检读到的 top=1018.7 来自 App 输出目录仍是旧 Core 副本（只跑了 `dotnet test`，未重建 App）；
+  重建 App 后 `artifacts/ui-selftest26/selftest.txt` 为 `top=1020.7`。
+- 自检关键行：`autofit.anchor left=120 top=1020.7 insideTaskbar=True`；
+  `dragIntoToolbar left=300 top=1021.3 inside=True`；`normalClamp top=906.7 insideWorkArea=True`；
+  `reEnable 120,1020.7`；`taskbarCreated stable=True`；四档/合成几何 `layout=ok`、`moved=False`；
+  `pinnedStable=True sizeChanged=True`；`viaSettings pos=120,1020.7 persisted=True`；关闭恢复 400×130；
+  `restart 400×130`。
+- 日志：`monitor 0,0,2560,1600 / taskbar 0,1528,2560,1600 / dpi 1.5 → 120,1020.7`。
+
+### 文档
+
+- `docs/02` §7.5 改为 4C-8/4C-9 行为：自动定位坐标、拖动边界、定位触发条件与层级说明。
+- `docs/09` 新增 D-074～D-077（定位算法、显示器边界、定位触发、事件驱动层级）。
+- `PROJECT_CONTEXT` 状态改 4C-9、新增结果节、事实 18、变更记录。
+
+### 启动恢复顺序修复（提交后复验）
+
+- 提交后把 `ui-state.json` 设为 `AutoFitTaskbar=true`、`Left/Top=120/1020.7`、`135.4×44` 重启，
+  UiDump 实测 `top=995.3`，胶囊落在任务栏上方，而非任务栏内。
+- 根因：`CapsuleSize.FromPersisted` 对 135.4 宽回退到 Mini 220×71.5；`RestorePosition` 在该尺寸下
+  按显示器底边夹取得到 `1066.7 - 71.5 = 995.3`，之后 `ApplyAutoFitSize` 才把高度缩到 44，位置已被改坏。
+- 修复：`OnSourceInitialized` 先调 `ApplyAutoFitSizeOnly()`（只算尺寸并设 `Width/Height`，不夹取、不持久化），
+  再 `RestorePosition()`；随后保留原来的 `ApplyAutoFitSize()` 做夹取/持久化/置顶。
+- 复验：同一 state 重启，UiDump `left=120 top=1020.7 actual=135.3x44`；`app.log` 记录
+  `恢复位置：auto=True vm=135.4x44 work=(0,0,1706.7,1018.7)`；BitBlt 截图胶囊绿色区域 abs y=1531..1596，
+  任务栏为 1528..1600，确认完整位于任务栏内部（`artifacts/ui-selftest26/taskbar-anchor-fixed.png`）。
+
+### Git 与未验证
+
+- 按用户授权统一提交 4C-1～4C-9 的产品代码与文档；排除 `bin/obj`、`artifacts`、日志、`tools/TaskbarOverlayProbe` 的构建产物。
+- 启动恢复顺序修复追加到同一提交（amend，未 push），保持"一次提交"的交付要求。
+- 未验证：真实鼠标拖拽（`SendInput` 无法驱动该窗口，自检用 `DragEndForTest` 走同一路径）、
+  任务栏激活/全屏应用后的遮挡、Explorer 重启的真实恢复、自动隐藏任务栏、多显示器混合 DPI。
+- 独立窗口仍不具原生任务栏组件的层级契约；不宣称任务栏内嵌。

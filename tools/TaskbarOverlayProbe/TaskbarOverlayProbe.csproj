@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TaskbarOverlayProbe</AssemblyName>
+    <RootNamespace>TaskbarOverlayProbe</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF 由 app.manifest 声明 PerMonitorV2；WinForms 的 WFO0003 提醒不适用于本混合项目。 -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    独立实验工具：不加入 HotspotMeter.sln，不引用产品项目，避免影响现有 CapsuleWindow。
+    只用 Win32 + WPF 验证“独立透明窗口覆盖任务栏”的可行性。
+  -->
+
+</Project>

@@ -404,3 +404,347 @@
   请求摘要排除 `OperationId`/`OperationSequence`/`CapturedAtUtc`/分段（重试不应改变请求身份），
   载荷摘要覆盖全部落库字段（供 3D 从行重算比对）。
 - 影响：编码是确定性的、与时区无关、字段边界无歧义；测试覆盖逐字段敏感性与分隔符注入。
+
+## D-047 胶囊窗口定位用 DPI 感知的 Win32 工作区
+
+- 状态：已决定并实现（阶段 4C-1）
+- 背景：本机 150% 缩放。实测 `SystemParameters.WorkArea` 返回的是物理像素宽度（1707），
+  而 WPF 的 `Left/Top` 单位是 DIP；把 1707 当 DIP 会把窗口推到屏幕右侧之外。
+- 决策：用 `MonitorFromWindow` + `GetMonitorInfo` 取当前显示器 `rcWork`（物理像素），
+  除以 `VisualTreeHelper.GetDpi` 的比例换算成 DIP；虚拟屏用 `GetSystemMetrics`
+  （`SM_XVIRTUALSCREEN` 等）同样换算后再夹取；首次运行放工作区右下角，恢复记忆位置后仍夹取。
+- 影响：1.5 DPI 下窗口落在 DIP (1362.7, 890.7)，对应物理 (2044, 1336)，在 2560×1600 屏内。
+  多显示器、DPI 切换、任务栏位置变化后的重新定位仍需实测（见阶段 4 验收项）。
+
+## D-048 目标热点暂取“已连接且信号最强”，不按 SSID 猜测
+
+- 状态：临时策略（阶段 4C-1），待设置阶段替换
+- 背景：设置与热点配置服务尚未实现，但胶囊需要真实数据才能开发。
+- 决策：`MonitorSessionService` 只在“已连接”的候选中按 `SignalQuality` 取第一条建
+  `HotspotTarget`；`ProfileId` 暂时 `Guid.NewGuid()`；不把其他 Wi-Fi 的流量计入，
+  也不通过 SSID 匹配历史网络。
+- 影响：当前只监控一个连接；用户切换热点时 SSID/GUID 变化会结束旧会话并开新会话。
+  正式版必须由用户显式选择并持久化 Profile（阶段 4C-3/6）。
+
+## D-049 开发期 UI 诊断用环境变量开关，不进入产品路径
+
+- 状态：已决定并实现（阶段 4C-1）
+- 背景：本次会话视觉引擎不可用（`read_image`/`modlens` 均失败），无法靠截图肉眼确认布局。
+- 决策：`UiDump` 读取 `HOTSPOTMETER_UI_DUMP=<path>`，可选
+  `HOTSPOTMETER_UI_DUMP_DELAY_MS`（默认 2500）与 `HOTSPOTMETER_UI_DUMP_EXIT=1`，
+  在延迟后用 `DispatcherTimer` 写出 DPI、窗口位置、每个 `TextBlock` 的文本与相对边界。
+  未设置变量时不注册定时器、不写文件。
+- 影响：证据是“渲染元素的真实坐标”，不能替代人眼审美判断；截图改用 `PrintWindow`
+  （分层窗口在部分环境不会被 `CopyFromScreen` 捕获）。该开关只用于开发验证，不属于产品功能。
+
+## D-050 胶囊用代码后置 + ViewModel，不引入 UI 框架
+
+- 状态：已决定并实现（阶段 4C-1）
+- 背景：胶囊的视觉简单但窗口行为（拖动/固定/定位）必须可控；引入第三方 UI 库会扩大依赖面。
+- 决策：圆角与图标用 `Border` + `Path`；右键菜单用 `ContextMenu`；拖动用 `DragMove()`；
+  位置与固定状态存 `%LOCALAPPDATA%\HotspotMeter\ui-state.json`；业务状态只放在
+  `CapsuleViewModel`，窗口不接触 WLAN/计数器/数据库。
+- 影响：依赖最少、可在普通 WPF 上维护；统计与设置窗口后续复用 `Theme.xaml` 的色板与菜单样式。
+## D-051 托盘用 WinForms NotifyIcon，不引入第三方托盘库
+
+- 状态：已决定并实现（阶段 4C-2）
+- 背景：WPF 没有系统托盘 API；第三方库会扩大依赖面，而托盘需求只是图标 + 右键菜单。
+- 决策：App 项目启用 `UseWindowsForms`，用 `System.Windows.Forms.NotifyIcon`；菜单用
+  `ContextMenuStrip` + 自绘 `ToolStripRenderer` 套深色主题；`Dispose` 时先 `Visible=false` 再释放。
+- 影响：多一个框架开关与 `WFO0003` 抑制（DPI 由 WPF manifest 负责）；托盘与 WPF 窗口共享同一 UI 线程，
+  菜单回调必须保持轻量。
+
+## D-052 设置入口只放在托盘，胶囊菜单固定四项
+
+- 状态：已决定并实现（阶段 4C-2）
+- 决策：胶囊右键菜单为“流量统计（暂禁用）/ 固定位置或解除固定位置 / 调整大小… / 退出程序”；
+  设置入口只在托盘与托盘菜单，避免两个入口并存造成状态不同步。
+- 影响：隐藏/显示胶囊也只放在托盘；胶囊菜单保持“显示与退出”的语义。自检断言菜单不含“设置”。
+
+## D-053 Window.Width/Height 不用绑定，改为代码赋值
+
+- 状态：已决定并实现（阶段 4C-2，缺陷修复）
+- 背景：把 `Width/Height` 绑定到 ViewModel 后，窗口实际高度变成 320×744.7，且 `ApplySize` 无法改变窗口尺寸；
+  `GetBindingExpression` 返回空，说明窗口布局流程覆盖/脱离了该绑定。
+- 决策：XAML 保留初始字面量 320×104；`DataContextChanged` 与 `ApplySize` 直接设置 `Window.Width/Height`，
+  ViewModel 只提供尺寸与派生字号/边距。
+- 影响：尺寸切换真实生效（280×92 / 320×104 / 400×130 / 自定义）；后续窗口尺寸调整沿用同一做法。
+
+## D-054 图标程序化生成，图标用 DIB 帧而非 PNG 帧
+
+- 状态：已决定并实现（阶段 4C-2）
+- 背景：视觉引擎不可用，无法手工绘制/校对位图；`System.Drawing.Icon` 对 PNG 压缩帧兼容性差。
+- 决策：`tools/IconGen/generate-icon.ps1` 按几何参数绘制深黑圆角底板 + 绿色 Wi-Fi 弧/圆点 + 上窄下宽梯形，
+  输出 16/20/24/32/40/48/64/128/256 的 DIB 帧；同时输出 256px PNG 供窗口图标与文档使用。
+- 影响：图标可重复生成；16px 下形状经像素统计确认可辨。脚本仅供开发，不参与构建。
+
+## D-055 右键菜单闪退：容器样式不能指向 MenuItem，改为 Resources 隐式样式
+
+- 状态：已决定并实现（阶段 4C-3，缺陷修复）
+- 背景：真实右键打开胶囊菜单时进程崩溃，`%LOCALAPPDATA%\HotspotMeter\logs\crash-*.log` 记录
+  `InvalidOperationException: 用于类型"MenuItem"的样式不能应用于类型"Separator"`，堆栈为
+  `ItemsControl.ApplyItemContainerStyle` ← `Panel.GenerateChildren` ← `Popup.CreateWindow` ← `ContextMenu.OnIsOpenChanged`。
+- 根因：`ContextMenu.ItemContainerStyle` 会把同一个 `TargetType=MenuItem` 的样式套到菜单里的所有容器，
+  包括 `Separator`；菜单第一次布局就抛异常。这不是"偶发弹窗问题"，而是每次打开必崩。
+- 决策：删除 `ItemContainerStyle`，把样式放进 `<ContextMenu.Resources>` 作为隐式 `MenuItem` 样式
+  （`<Style TargetType="MenuItem" BasedOn="{StaticResource CapsuleMenuItemStyle}" />`），`Separator` 使用默认样式。
+- 备选与否决：不改 `Separator` 为自定义控件（会改变菜单视觉）；不捕获菜单异常（会掩盖真实缺陷，违反"找根因"要求）。
+- 影响：菜单三开三关无异常；新增 `CrashLog` 仅记录未处理异常堆栈，不吞异常。
+
+## D-056 胶囊四档统一比例缩放，最小宽度 220 DIP
+
+- 状态：已决定并实现（阶段 4C-3）
+- 背景：用户要求保留现有胶囊布局，只做整体等比例缩小；原"小型 280×92"与 320×104 比例不一致（3.043 vs 3.077）。
+- 决策：以 320×104 为基准比例；预设迷你 220×71.5 / 小型 280×91 / 标准 320×104 / 大型 400×130；
+  自定义范围 220–480 × 71.5–156，宽高比容差 1.2%；缩放系数 `clamp(min(W/320, H/104), 0.65, 1.6)`。
+  所有视觉量由同一系数派生（圆角 20s、内边距 18/15/18/13s、状态 13s、图标 17s、流量 34s/行高 40s、
+  说明 11s、速度 11s、间距 7s/4s/10s），布局结构与元素集合不变。
+- 备选与否决：不做一套独立"迷你单行布局"（用户明确禁止）；不做隐藏元素的响应式降级（会改变信息层级）。
+- 影响：迷你档字号约 8.9–23.4，仍在窗口内且无重叠（自检 `layout=ok`）；220 DIP 是可用性与比例的下限。
+
+## D-057 布局正确性用矩形断言，而不是肉眼/视觉模型
+
+- 状态：已决定并实现（阶段 4C-3）
+- 背景：本会话视觉引擎不可用，无法可靠目检截图；文字重叠/越界需要可重复证据。
+- 决策：`UiDump.CheckLayout(window)` 枚举全部 `TextBlock`，计算相对窗口的矩形，断言
+  ①所有矩形在窗口内（容差 0.5 DIP）；②任意两矩形交集面积不超过 0.5×0.5 DIP。结果写入自检日志。
+- 影响：四档尺寸 + 自定义尺寸均输出 `layout=ok texts=7`；该检查与截图并存，截图仍作为人工观感依据。
+
+## D-058 任务栏检测优先 Win32 AppBar，失败走工作区推断
+
+- 状态：已决定并实现（阶段 4C-4）
+- 背景：需要把胶囊自动停到任务栏附近，但任务栏可能位于四边、可能自动隐藏、可能跨多显示器且每屏 DPI 不同；
+  用分辨率或固定经验值猜任务栏尺寸不可靠。
+- 决策：`TaskbarDetector` 组合 `SHAppBarMessage(ABM_GETTASKBARPOS)` 取任务栏矩形与边缘、
+  `SHAppBarMessage(ABM_GETSTATE)` 判自动隐藏、`MonitorFromWindow`/`MonitorFromRect` 定位显示器、
+  `GetMonitorInfo` 取显示器与工作区、`GetDpiForMonitor`（失败退 `GetDpiForWindow`）取 DPI。
+  任一步失败或返回非法矩形时，回退到"主显示器 + 工作区差异推断边缘"，并把来源写入检测描述，绝不因检测失败崩溃。
+- 备选与否决：不用 `SystemParameters.WorkArea`（只给主屏、物理像素语义易混）；不读注册表任务栏配置（版本差异大且是内部细节）；
+  不做 UI Automation 探测开始按钮（脆弱且与适配目标无关）。
+- 影响：本机实测 `底部任务栏 · 150% · 工作区 1707×1019 DIP（SHAppBarMessage(ABM_GETTASKBARPOS)）`；
+  修复了 `GetMonitorInfo` 未设 `cbSize` 导致恒失败的实现缺陷。
+
+## D-059 纯几何计算放 Core，App 只负责取数与落地
+
+- 状态：已决定并实现（阶段 4C-4）
+- 背景：停靠/缩放规则需要覆盖四边、自动隐藏、多显示器、200% DPI、空间不足等组合，放在窗口代码后置里无法稳定测试。
+- 决策：`HotspotMeter.Core/Layout/TaskbarLayout.cs` 定义 `TaskbarLayoutInput` / `CapsuleLayoutOptions` / `CapsulePlacement`，
+  纯函数 `Compute` 完成全部像素/DIP 换算与放置决策；App 的 `TaskbarDetector` 只采集输入，`CapsuleWindow` 只应用结果。
+  Tests 项目不引用 App，但可直接覆盖 12 个布局场景。
+- 规则要点：`scale = min(1, 可用宽/(320·dpi), 可用高/(104·dpi))`；`scale ≥ 0.6875` 时贴任务栏并保持比例，
+  否则退到对侧角使用最小尺寸 220×71.5；工作区连最小尺寸都放不下时标记 `MinimumForced` 并如实说明。
+- 影响：新增 12 个单元测试（全套 364/364）；四边与 200% 场景在真机自检中与期望坐标完全一致。
+
+## D-060 自动适配与手动配置的优先级：手动优先，开启时备份
+
+- 状态：已决定并实现（阶段 4C-4）
+- 背景：自动适配会改变尺寸与位置，不能悄悄覆盖用户已保存的手动尺寸/位置；固定状态又代表用户明确要求不动。
+- 决策：①固定位置时自动适配只更新检测结果、不移动窗口；②开启自动适配时把当前手动 Left/Top/Width/Height
+  备份到 `Manual*` 字段；③关闭自动适配时恢复 `Manual*`；④用户手动改尺寸或拖动胶囊会关闭自动适配并落盘；
+  ⑤自动适配运行期间 `PersistState` 不写 Width/Height，避免把自动结果当成手动配置。
+- 备选与否决：不做"自动适配写入 Width/Height"（会污染手动配置）；不在固定状态强行重排（违背用户意图）。
+- 影响：自检验证 400×130 → 开自动适配变 320×104 → 关闭恢复 400×130；`AutoFitTaskbar` 正确写入 `ui-state.json`。
+
+## D-061 速度区改为流量数字右侧的两行竖排
+
+- 状态：已决定并实现（阶段 4C-5）
+- 背景：用户要求下载/上传从"右下角横排"移到"流量数字右侧、上下竖排"，且四档尺寸都不能挤压或裁切。
+- 决策：`CapsuleWindow.xaml` 的 Row1 改为两列；右列 `SpeedBlock` 是纵向 `StackPanel`，内含两个三列 `Grid`
+  （方向符 / 标签 / 数值），两行用 `SharedSizeGroup` 共享列宽，保证两行标签与数字对齐。
+  间距全部由 `SpeedBlockMargin`、`SpeedArrowMargin`、`SpeedLabelMargin`、`SpeedRowSpacing` 按缩放系数派生。
+- 备选与否决：不用单个 `Grid` 两行共享列宽再叠加行间距（需要为每个元素组合边距，绑定更复杂）；
+  不缩小/隐藏速度文字来适配迷你档（会丢信息）。
+- 影响：自检四档均 `layout=ok texts=9`，且 `speedBlock ... stacked=True inside=True`；最小档 220×71.5 下
+  速度块 44×22 DIP 仍完整落在窗口内。
+
+## D-062 滚动条用完整 ControlTemplate，而不是只改颜色
+
+- 状态：已决定并实现（阶段 4C-5）
+- 背景：设置窗口内容高度超过可视区，系统默认滚动条会露出白色轨道/白色边角，与深色卡片冲突。
+- 决策：在 `Theme.xaml` 定义 `DarkScrollBarStyle`（宽 10 DIP）+ 垂直/水平 `ControlTemplate`：轨道 `#1C1C20`、
+  滑块圆角 3、悬停/拖动三档颜色，翻页按钮透明并显式绑定 `ScrollBar.PageUp/PageDown/PageLeft/PageRight`，
+  隐式样式覆盖全部 `ScrollBar`。
+- 影响：自检读取到 `width=10 visible=True thumbFill=#FF3A3A3F`，`ScrollableHeight=277.3`；
+  滚轮、拖动、键盘与触控板行为仍由 `ScrollViewer`/`ScrollBar` 原生命令处理，未自定义输入逻辑。
+
+## D-063 右键菜单白色区域：替换 ContextMenu 模板，而不是只改 Background
+
+- 状态：已决定并实现（阶段 4C-5）
+- 背景：仅改 `ContextMenu.Background` 仍会出现白底/白边——白色来自系统主题的 `ContextMenu` 默认模板
+  （外框、Popup 边角与滚动区域）。
+- 决策：`CapsuleContextMenuStyle` 替换整个 `ContextMenu` 模板：圆角 8 的 `Border`（`#1F1F23` 背景、
+  `#3A3A3F` 1 DIP 边框）+ `ScrollViewer` + `ItemsPresenter`；`MenuItem` 与 `Separator` 用
+  `ContextMenu.Resources` 中的隐式样式，继续避免 `ItemContainerStyle`（D-055）。
+- 影响：自检连续开关 10 次无异常；菜单背景 `#FF1F1F23`、边框 `#FF3A3A3F`；菜单项文字/禁用态/分隔线均为深色。
+
+## D-064 自动适配改为"靠任务栏左/上侧"，并修正遮挡
+
+- 状态：已决定并实现（阶段 4C-5）
+- 背景：4C-4 的自动适配确实执行了，但横向任务栏右对齐后位置约 (1378.7, 906.7)，与手动默认右下角
+  (约 1363, 891) 几乎重合，且 `MaxScale=1` 在 150% 单屏下不改变尺寸，所以看起来"没有效果"。
+- 决策：`PlaceNearEdge` 改为横向任务栏靠左（`work.Left + margin`）、纵向靠上（`work.Top + margin`）；
+  与任务栏之间保留 12 DIP；这样自动结果与手动位置有明确区别，也不会压住任务栏中央的主要交互区。
+- 备选与否决：不做"强制覆盖任务栏"的置顶（Shell 对任务栏层级有特殊规则，且用户明确要求不破坏系统）；
+  不隐藏/缩小信息来"让位置更好看"。
+- 影响：真机自动停靠到 (8, 902.7)；单元测试期望同步更新（底部 8/908、顶部 8/54.7、左侧 54.7/8、右侧 1332/8）。
+
+## D-065 夹取用工作区，置顶用 SetWindowPos 且不抢焦点
+
+- 状态：已决定并实现（阶段 4C-5）
+- 背景：旧 `ClampToScreen` 用虚拟屏幕边界，窗口可以被拖到任务栏上，点击任务栏后就被任务栏盖住；
+  旧 `ShowCapsule` 用 `Topmost=false→true` 重新激活，可能抢焦点。
+- 决策：`ClampCurrentPosition` 以当前显示器工作区（`GetWorkAreaInDips`）为边界，拖动结束也夹取；
+  `EnsureTopmost` 调 `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE)`，
+  只调 Z 序、不激活窗口；`ApplyPlacement` 不再二次夹取（避免跨屏被拉回主屏）。
+- 影响：自检真实停靠 `left=8 top=902.7` 与 `Compute` 完全一致；拖动/显示后位置稳定，隐藏再显示位置尺寸不变。
+
+## D-066 多屏检测以窗口所在显示器为准
+
+- 状态：已决定并实现（阶段 4C-5）
+- 背景：旧 `TaskbarDetector` 总是取"任务栏所在显示器"（主屏），副屏上的胶囊会被算成主屏布局，
+  多屏下自动适配位置错误。
+- 决策：`GetTargetMonitor` 先用 `MonitorFromWindow` 取胶囊所在显示器；只有当任务栏矩形确实属于该显示器
+  （矩形相交）时才采用，否则走工作区推断；自动隐藏判断仅在任务栏属于当前显示器时置位。
+- 影响：自检 `secondMonitor` 合成场景 expected 与 actual 完全一致；真实单屏行为不变。
+
+## D-067 速度块与流量数字用同一行 + VerticalAlignment 对齐，而不是靠 Margin 微调
+
+- 状态：已决定并实现（阶段 4C-6）
+- 背景：用户要求速度块整体的垂直中心与**流量数字控件本身**的中心对齐；基准不是"数字 + 已使用流量"的
+  整个左侧区域，也不是胶囊中心。旧实现把左侧做成一个 `StackPanel`，速度块相对这个整体居中，天然偏低。
+- 决策：Row1 改成两行两列的 `Grid`：流量数字与速度块都放在第 0 行、都用 `VerticalAlignment="Center"`。
+  行高由两者中较高者决定（数字的行高 40s 通常更高），两个控件的中心因此由布局保证相等；说明文字独占第 1 行，
+  不再参与速度块的对齐基准。没有为对齐写任何固定 Margin。
+- 细节：速度块设置 `UseLayoutRounding="False"`，避免在 150% 等缩放比下 `5 DIP` 的居中偏移被舍入成
+  `5.33 DIP`，从而保证控件矩形中心严格相等（禁用舍入只影响速度块的亚像素排布，不影响字号与主题）。
+- 验证：`UiDump.CheckSpeedAlignment` 输出 `trafficCenterY / speedCenterY / delta`，四档与自定义尺寸
+  实测 `delta=0`；`layout=ok texts=9` 仍通过（速度文本未与其他文本重叠）。
+- 备选与否决：不做"给速度块加负数/经验 Margin"（缩放档位变化即失效，也违反用户约束）；不把速度块改成
+  绝对定位（不随 DPI 与尺寸自适应）。
+
+## D-068 不把胶囊嵌入任务栏内部：保留独立置顶窗口
+
+- 状态：已决定（阶段 4C-7 可行性验证；未集成到产品）
+- 背景：用户希望胶囊显示在任务栏矩形内部。查公开文档：`Taskbar Extensions` 只覆盖 Jump List、
+  缩略图工具栏、图标叠加、进度条、通知区域；DeskBand（`IDeskBand2`）是旧机制，文档未声明 Windows 11
+  支持，且需要把 COM DLL 加载进 Explorer。没有公开的"第三方任意 UI 嵌入任务栏"接口。
+- 实验（`tools/TaskbarOverlayProbe`，独立项目、不引用产品项目）：2560×1600、150% DPI 下任务栏为
+  `0,1528,2560,1600`（高 72 px），把 197×64 px（131.3×42.7 DIP）的置顶透明窗口放在 `(249,1532)`：
+  `WindowFromPoint` 命中探针、z 序在任务栏之上、点击/拖拽/右键菜单均可用；切到 `Progman` 后仍在任务栏之上。
+- 但可靠性证据不足：①层级依赖 `SetWindowPos(HWND_TOPMOST)` 反复重断言，Explorer 重启后旧任务栏 hwnd
+  失效，约 0.8 s 内会被新任务栏盖住；②任务栏按钮位置靠 UIA 枚举，布局/更新变化即可能失效，空隙不稳定
+  （同一次枚举 37 个元素时找不到空隙，过滤为 22 个可见按钮后空隙为 237..781）；③没有 API 契约，
+  Windows 更新可能改变 Shell 层级与任务栏结构；④覆盖任务栏区域会遮挡按钮/托盘，用户拖动或改变任务栏
+  宽度时可能压住系统控件。
+- 决策：不把该实验模式并入产品；继续使用"独立透明置顶窗口 + 自动停靠任务栏附近 + 手动拖动"，界面与文档
+  不宣称"任务栏内部显示"。若未来仍要做，必须单独立项，带开关、兼容性警告与手动回退，且不得注入 Explorer。
+- 影响：`PROJECT_CONTEXT` 既有事实第 6 条得到实测支持；统计窗口、设置窗口、托盘与既有胶囊行为均不变。
+
+## D-069 自动适配任务栏只负责尺寸，位置始终由用户决定
+
+- 状态：已决定（阶段 4C-8）
+- 背景：4C-4/4C-5 的自动适配会同时计算尺寸与停靠位置（右侧/左侧对齐、对侧角落兜底），并曾用 UIA 找空隙。
+  用户明确要求本次只按显示器环境自动算尺寸，位置由用户拖到任务栏，不自动扫描按钮、不自动停靠。
+- 决策：删除自动位置计算与 UIA 空隙逻辑；`SetAutoFitTaskbar(true)` 只调用 `ApplyAutoFitSize`，只改
+  `Width/Height` 与 ViewModel 尺寸，`Left/Top` 保持用户当前值。`ClampCurrentPosition` 在自动模式下使用
+  "显示器矩形"而不是工作区，允许用户把胶囊拖进任务栏区域。
+- 理由：避免窗口自己跳动、避免与用户拖动争夺控制权；也避免依赖不稳定的任务栏按钮布局。
+- 影响：设置窗口说明文案改为"位置仍由你拖动"；旧"停靠"实现保留在 `TaskbarLayout` 单元测试中，但不再被
+  App 调用（未删除，避免无关重构）；`ApplyAutoLayout*` 路径改为 `ApplyAutoFit*`。
+
+## D-070 任务栏高度优先的尺寸算法：40–104 DIP + 三档密度
+
+- 状态：已决定（阶段 4C-8）
+- 背景：普通四档最小高度 71.5 DIP，而 Windows 11 任务栏常见厚度约 48 DIP；沿用普通下限会导致胶囊塞不进
+  任务栏。用户要求独立的任务栏适配算法，且不允许无限缩小字体/图标。
+- 决策：`TaskbarSizingCalculator` 以"任务栏厚度 − 4 DIP 呼吸空间"为高度基准（横向任务栏取实际厚度，
+  纵向取工作区高度），夹在 `MinReadableHeight=40` 与 `MaxReadableHeight=104` 之间；宽度 = 高度 × 3.0769，
+  以工作区宽减 16 DIP 封顶且不低于 132 DIP。密度按厚度分档：≥88 DIP 正常、≥56 DIP 紧凑、
+  <56 DIP 最简（隐藏"下载/上传"文字标签，保留 ↓/↑ 与数值）。厚度 <44 DIP 时 `FitsTaskbar=false`，
+  说明文字明确写出"低于 44 DIP 可读下限"。
+- 理由：高度是能否放进任务栏的硬约束；三档密度把"可读性"量化为字号/标签策略，而不是无限缩放。
+- 影响：自动模式尺寸不受 `CapsuleSize` 的 220×71.5 下限限制；`CapsuleWindow` 的 `MinWidth/MinHeight`
+  放宽到 132/40，普通模式仍由设置校验限制在 220–480 × 71.5–156。
+
+## D-071 胶囊信息层级：删除 Wi-Fi 状态与说明文字
+
+- 状态：已决定（阶段 4C-8，用户明确要求）
+- 决策：胶囊内删除 Wi-Fi 图标、"已连接/未连接"文字、"已使用流量"说明；左侧只保留会话流量数字，
+  标准档字号从 34 增至 46，并放进 `Viewbox(Stretch=Uniform, StretchDirection=DownOnly)`，超长文本只缩小
+  不裁切；右侧速度字号从 11 增至 14（按缩放系数派生），仍为下载在上、上传在下，箭头 ↓/↑ 保留。
+- 对齐：流量数字与速度块仍在同一 Grid 行且 `VerticalAlignment=Center`，4C-6 的基准不变。
+- 连接状态语义：底层检测与红色/绿色背景不变，只是不再用文字/图标表达；断开时左侧显示"上次 {流量}"。
+- 影响：`CapsuleViewModel` 删除 StatusText/CaptionText/图标相关属性；`UiDump.CheckSimplifiedContent`
+  断言无这些元素、并记录实际字号；自检 `texts` 从 9 降为 7（数字 + 两个箭头 + 两个标签 + 两个数值）。
+
+## D-072 最简密度隐藏速度标签，是任务栏 48 DIP 下的显式取舍
+
+- 状态：已决定（阶段 4C-8）
+- 背景：48 DIP 任务栏扣掉呼吸空间后只有 44 DIP；完整显示"下载/上传"标签需要更高行高，强行保留会让
+  字号小到不可读或文字重叠。
+- 决策：Minimal 密度保留 ↓/↑ 方向符、数值与单位，隐藏"下载/上传"两个文字标签；`ShowSpeedLabels`
+  暴露给 ViewModel 控制可见性。Compact/Normal 保留标签。
+- 验证：48 DIP 合成与真机均得到 135.4×44、Minimal；`DescribeSpeedBlock` 在标签隐藏时仍能通过 ↓/↑ 识别
+  两行，`stacked=True inside=True`。
+- 限制：8.5 DIP 速度字号明显小于普通档（标准 14 DIP），且这是"能放进 48 DIP 任务栏"的必要代价；
+  不宣称"完整信息在任何任务栏高度都可读"。低于 44 DIP 时只保证不裁切，不保证可读。
+
+## D-073 自动尺寸用"几何单元测试 + 合成输入自检"双重验证
+
+- 状态：已决定（阶段 4C-8）
+- 决策：纯计算放在 `HotspotMeter.Core/Layout/TaskbarSizing.cs`，由 12 个 xUnit 用例锁定（DPI、四边、
+  窄屏、无任务栏矩形、比例守恒、40 DIP 下限）；App 层用 `ApplyAutoFitForTest(TaskbarLayoutInput)`
+  以合成矩形驱动真实 ViewModel/窗口尺寸路径，并断言 `moved=False`（绝不改位置）与 `layout=ok`。
+- 理由：真实环境只有 150% 单屏与 48 DIP 任务栏，无法覆盖 200%、二屏、纵向任务栏；把"计算"与"应用"
+  分开，才能在没有对应硬件时仍验证规则。
+- 限制：合成坐标不是实机多屏证据；真实自动隐藏、混合 DPI、拖入任务栏后的层级仍列为人工验收项。
+
+## D-074 自动定位只支持底部任务栏，X=左边界+120 DIP，Y 垂直居中且不扣边距
+
+- 状态：已决定（阶段 4C-9）
+- 决策：新增 `HotspotMeter.Core/Layout/TaskbarAnchor.cs`，`TaskbarAnchorCalculator.Compute` 仅处理
+  `TaskbarEdge.Bottom`；`left = monitor.Left + 120 * dpi` 并夹在 `[monitor.Left + 8dpi, monitor.Right - width - 8dpi]`；
+  `top = taskbar.Top + (taskbar.Height - height)/2`，上限 `monitor.Bottom - height`，**不再扣 8 DIP**。
+  顶部/左侧/右侧任务栏、缺少任务栏矩形、胶囊高于任务栏均返回 `Supported=false` 与中文原因。
+- 理由：用户要求"底部偏左、位于任务栏内部、不覆盖屏幕边界"；8 DIP 的垂直边距会把 44 DIP 高的胶囊顶回任务栏上方，
+  这是首轮单测失败与实机 top=1018.7 的直接原因（去掉后为 1020.7，完整落在 1528–1600 px 内）。
+- 限制：仅底部任务栏做了定位；其它方向不猜测、不换边，只写日志并在设置说明中保持"当前位置"。
+
+## D-075 自动适配开启时拖动边界用显示器物理边界，关闭恢复工作区 + 8 DIP
+
+- 状态：已决定（阶段 4C-9）
+- 决策：`CapsuleWindow.ClampCurrentPosition` 在 `_autoFit=true` 时以当前显示器矩形为界、margin=0，允许窗口进入
+  任务栏矩形；普通模式仍用 `GetWorkAreaInDips` + `ScreenMargin=8`。`RestorePosition` 同样按模式选择 margin。
+- 理由：工作区天然排除任务栏，只要还用它做下边界，胶囊就永远进不了任务栏；而完全去掉边界又会把窗口拖丢。
+  用"显示器边界"既允许进入任务栏，又保证还能拖回来。
+- 限制：任务栏不在当前显示器、或任务栏自动隐藏时，边界保护仍按显示器矩形，不做任务栏感知的额外限制。
+
+## D-076 自动定位只在"关→开"执行；启动/拖动结束只恢复与夹取，不重新定位
+
+- 状态：已决定（阶段 4C-9）
+- 决策：`SetAutoFitTaskbar(true)` 调 `ApplyAutoFitSize(positionAtAnchor: true)`；`ApplyAutoFitSize` 默认
+  `positionAtAnchor=false`，供启动恢复、`TaskbarCreated`、DPI/分辨率变化与拖动结束使用（只改尺寸、夹取、置顶、持久化）。
+  固定状态跳过定位。启动 `RestorePosition` 只读取并夹取保存位置。
+- 理由：用户明确"首次开启自动定位；拖动后以用户位置为准；重启恢复上次位置；再次开关可重新定位"。
+  若在每次尺寸重算时都定位，用户拖到任务栏右侧后会被反复拉回左侧。
+- 限制：位置"是否曾由用户拖动"没有单独标记；依赖"开关从关到开"这一事件作为重新定位的唯一触发。
+
+## D-077 层级恢复只做事件驱动的一次性重断言，并记录 app.log
+
+- 状态：已决定（阶段 4C-9）
+- 决策：新增 `AppLog`（`%LOCALAPPDATA%\HotspotMeter\logs\app.log`，1 MB 轮转，IO 失败静默）记录自动定位几何与
+  `TaskbarCreated`；`EnsureTopmost()` 统一用 `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE)`；
+  收到 `TaskbarCreated` 后重检测、按当前模式重定位/改尺寸、再置顶，不做定时轮询。
+- 理由：4C-7 探针实测 Explorer 重启后旧 hwnd 失效、层级被新任务栏盖住，约 0.8 s 重断言即可恢复；高频抢 Z 序
+  会抢焦点且掩盖真实问题。事件驱动 + 一次性重断言是可解释、可复现的最小方案。
+- 限制：任务栏激活、全屏应用、系统更新仍可能短暂遮挡；不承诺原生任务栏组件的层级稳定性，不注册 AppBar。
+
+## D-078 启动恢复位置前先应用自动尺寸
+
+- 状态：已决定（阶段 4C-9 复验修正）
+- 决策：`OnSourceInitialized` 在 `RestorePosition()` 之前调用 `ApplyAutoFitSizeOnly()`：只检测任务栏、
+  计算 `TaskbarSizingCalculator` 结果并设置 `ViewModel` 尺寸与窗口 `Width/Height`，不夹取、不持久化。
+- 理由：持久化宽度 135.4 会被 `CapsuleSize.FromPersisted` 回退为 Mini 220×71.5。若此时先恢复位置，
+  夹取用的是 71.5 高度，`1066.7 - 71.5 = 995.3`，保存的 1020.7 被永久改写；之后尺寸缩到 44 也无法复原。
+- 备选与否决：在 `RestorePosition` 里按最终尺寸二次夹取——会把用户位置再次移动，且无法区分旧高度来源，否决。
+- 验证：UiDump `left=120 top=1020.7`、截图绿色区域 y=1531..1596（任务栏 1528..1600）。

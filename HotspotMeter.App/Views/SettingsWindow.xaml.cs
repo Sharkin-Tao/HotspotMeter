@@ -1,0 +1,94 @@
+using System.Windows;
+using HotspotMeter.App.Services;
+using HotspotMeter.App.ViewModels;
+
+namespace HotspotMeter.App.Views;
+
+/// <summary>
+/// 独立设置窗口。关闭它只销毁窗口，不影响后台监控；单实例由 <see cref="App"/> 统一管理。
+/// 位置记忆在这里完成：写入 ui-state.json 的 SettingsLeft/SettingsTop，旧文件没有字段时保持居中。
+/// </summary>
+public partial class SettingsWindow : Window
+{
+    private const double ScreenMargin = 8;
+
+    private readonly SettingsViewModel _viewModel;
+    private readonly WindowStateStore _stateStore;
+
+    public SettingsWindow(SettingsViewModel viewModel, WindowStateStore stateStore)
+    {
+        _viewModel = viewModel;
+        _stateStore = stateStore;
+        InitializeComponent();
+        DataContext = viewModel;
+        Icon = AppIcons.WindowIcon;
+
+        SourceInitialized += (_, _) =>
+        {
+            DarkTitleBar.Apply(this);
+            RestorePosition();
+        };
+        Closed += (_, _) => PersistPosition();
+    }
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+
+        // 胶囊右键菜单也能切换固定状态，激活时刷新，避免显示过期值。
+        _viewModel.Refresh();
+    }
+
+    private void RestorePosition()
+    {
+        var saved = _stateStore.Load();
+        if (saved?.SettingsLeft is not { } left || saved.SettingsTop is not { } top)
+        {
+            return;
+        }
+
+        // 已记忆位置时不要再用 CenterScreen 覆盖。
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        (Left, Top) = Clamp(left, top);
+    }
+
+    private void PersistPosition()
+    {
+        if (double.IsNaN(Left) || double.IsNaN(Top))
+        {
+            return;
+        }
+
+        var (left, top) = Clamp(Left, Top);
+        _stateStore.Update(state =>
+        {
+            state.SettingsLeft = left;
+            state.SettingsTop = top;
+        });
+    }
+
+    /// <summary>多显示器/分辨率变化后仍让设置窗口回到可见区域（WPF 的 SystemParameters 是 DIP）。</summary>
+    private (double Left, double Top) Clamp(double left, double top)
+    {
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        var minLeft = SystemParameters.VirtualScreenLeft + ScreenMargin;
+        var minTop = SystemParameters.VirtualScreenTop + ScreenMargin;
+        var maxLeft = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - width - ScreenMargin;
+        var maxTop = SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - height - ScreenMargin;
+
+        if (maxLeft < minLeft)
+        {
+            maxLeft = minLeft;
+        }
+
+        if (maxTop < minTop)
+        {
+            maxTop = minTop;
+        }
+
+        return (Math.Clamp(left, minLeft, maxLeft), Math.Clamp(top, minTop, maxTop));
+    }
+
+    private void OnClose(object sender, RoutedEventArgs e) => Close();
+}
