@@ -36,6 +36,7 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
     private bool _hasSession;
     private bool _isPinned;
     private bool _showSpeedLabels = true;
+    private bool _showCaption = true;
     private CapsuleSize _size = CapsuleSize.Default;
     private CapsuleDensity _density = CapsuleDensity.Normal;
 
@@ -126,6 +127,12 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
 
     public double TrafficLineHeight { get; private set; }
 
+    /// <summary>流量数字上方的说明标签字号。</summary>
+    public double CaptionFontSize { get; private set; }
+
+    /// <summary>说明标签与数字之间的垂直间距（标签下边距）。</summary>
+    public Thickness CaptionMargin { get; private set; }
+
     public double SpeedFontSize { get; private set; }
 
     /// <summary>速度区域与左侧流量数字之间的间距。</summary>
@@ -147,6 +154,17 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
         private set => Set(ref _showSpeedLabels, value);
     }
 
+    /// <summary>
+    /// 是否显示流量数字上方的"已使用流量"。
+    /// 自动适配的 Compact/Minimal 密度高度不足以再放一行标签，隐藏它是为了避免重叠/裁切；
+    /// 普通四档与自定义尺寸始终显示。
+    /// </summary>
+    public bool ShowCaption
+    {
+        get => _showCaption;
+        private set => Set(ref _showCaption, value);
+    }
+
     public CapsuleViewModel() => ApplyNormalMetrics();
 
     /// <summary>
@@ -163,6 +181,7 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
         _size = size;
         _density = CapsuleDensity.Normal;
         ShowSpeedLabels = true;
+        ShowCaption = true;
         ApplyNormalMetrics();
 
         // 空属性名表示"所有属性都可能变化"，一次性刷新尺寸与字号绑定。
@@ -178,6 +197,8 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
         _size = new CapsuleSize(fit.Width, fit.Height);
         _density = fit.Density;
         ShowSpeedLabels = fit.ShowSpeedLabels;
+        // 44/56 DIP 的任务栏胶囊放不下"标签 + 数字 + 两行速度"，只保留核心数字与速度。
+        ShowCaption = fit.Density == CapsuleDensity.Normal;
         ApplyDensityMetrics(fit.Density);
         OnPropertyChanged(string.Empty);
     }
@@ -189,6 +210,8 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
         CapsuleContentMargin = new Thickness(18 * s, 14 * s, 18 * s, 14 * s);
         TrafficFontSize = 46 * s;
         TrafficLineHeight = 54 * s;
+        CaptionFontSize = 11 * s;
+        CaptionMargin = new Thickness(0, 0, 0, 2 * s);
         SpeedFontSize = 14 * s;
         SpeedBlockMargin = new Thickness(14 * s, 0, 0, 0);
         SpeedArrowMargin = new Thickness(0, 0, 3 * s, 0);
@@ -206,6 +229,8 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
                 CapsuleContentMargin = new Thickness(18 * s, 14 * s, 18 * s, 14 * s);
                 TrafficFontSize = 46 * s;
                 TrafficLineHeight = 54 * s;
+                CaptionFontSize = 11 * s;
+                CaptionMargin = new Thickness(0, 0, 0, 2 * s);
                 SpeedFontSize = 14 * s;
                 SpeedBlockMargin = new Thickness(14 * s, 0, 0, 0);
                 SpeedArrowMargin = new Thickness(0, 0, 3 * s, 0);

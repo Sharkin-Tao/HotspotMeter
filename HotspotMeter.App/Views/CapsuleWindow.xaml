@@ -48,24 +48,38 @@
             ToolTip="{Binding TooltipText}"
             MouseLeftButtonDown="OnSurfaceMouseLeftButtonDown">
         <!--
-            4C-8 精简布局：左侧只有本次会话流量数字，右侧只有上下行速度。
-            Wi-Fi 图标、连接状态、'已使用流量'说明均已删除；连接状态只由底色表达。
-            两个元素处在同一个 Grid 行且都 VerticalAlignment=Center，
-            因此速度块中心严格等于流量数字中心（保持 4C-6 的对齐基准）。
+            4C-10：左侧恢复"已使用流量"说明，并放到数字上方。
+            标签与数字同处第 0 列、各自水平居中，因此标签中心与数字中心对齐；
+            速度块单独占第 1 列的第 1 行，和数字同处一行并 VerticalAlignment=Center，
+            所以 4C-6 的"速度块中心 = 流量数字中心"关系保持不变。
+            两行整体在外层 Grid 里垂直居中。
         -->
-        <Grid Margin="{Binding CapsuleContentMargin}">
+        <Grid Margin="{Binding CapsuleContentMargin}" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock x:Name="TrafficCaption"
+                       Grid.Row="0" Grid.Column="0"
+                       Text="已使用流量"
+                       FontSize="{Binding CaptionFontSize}"
+                       Foreground="{StaticResource TextSecondary}"
+                       HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                       Margin="{Binding CaptionMargin}"
+                       Visibility="{Binding ShowCaption, Converter={StaticResource BoolToVisibility}}" />
 
             <!--
                 流量数字放在 Viewbox 里：正常文本不放大；极端长文本（例如 999.9 GB）
                 在窄胶囊中只会等比缩小，绝不会裁切或把速度块挤出窗口。
             -->
-            <Viewbox Grid.Column="0"
+            <Viewbox Grid.Row="1" Grid.Column="0"
                      Stretch="Uniform" StretchDirection="DownOnly"
-                     HorizontalAlignment="Left" VerticalAlignment="Center">
+                     HorizontalAlignment="Center" VerticalAlignment="Center">
                 <TextBlock x:Name="TrafficValue"
                            Text="{Binding SessionText}"
                            FontFamily="Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI"
@@ -73,7 +87,7 @@
                            LineHeight="{Binding TrafficLineHeight}" LineStackingStrategy="BlockLineHeight" />
             </Viewbox>
 
-            <StackPanel x:Name="SpeedBlock" Grid.Column="1"
+            <StackPanel x:Name="SpeedBlock" Grid.Row="1" Grid.Column="1"
                         VerticalAlignment="Center" HorizontalAlignment="Right"
                         Grid.IsSharedSizeScope="True"
                         UseLayoutRounding="False"

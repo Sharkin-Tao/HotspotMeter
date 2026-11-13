@@ -931,3 +931,20 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 未验证：真实鼠标拖拽（`SendInput` 无法驱动该窗口，自检用 `DragEndForTest` 走同一路径）、
   任务栏激活/全屏应用后的遮挡、Explorer 重启的真实恢复、自动隐藏任务栏、多显示器混合 DPI。
 - 独立窗口仍不具原生任务栏组件的层级契约；不宣称任务栏内嵌。
+
+## 阶段 4C-10：说明标签移至流量数字上方
+
+- 需求：把"已使用流量"从数字下方移到上方；数字仍为主体；速度区位置/对齐不变；四档与自定义尺寸均不得重叠/裁切。
+- 现状核对：4C-8 精简版已经删除该标签（D-069～D-073），因此本次不是"移动"而是"按新要求重新加入并固定在上方"。
+  这是对 4C-8 决定的有意覆盖，保留精简版的其余结构（无 Wi-Fi 图标/连接状态）。
+- 实现：`CapsuleWindow.xaml` 外层 Grid 增加两行，标签在第 0 行、数字与速度块同在第 1 行；数字与标签同列且都
+  `HorizontalAlignment=Center`，速度块仍 `VerticalAlignment=Center`。`CapsuleViewModel` 新增
+  `CaptionFontSize=11×s`、`CaptionMargin=(0,0,0,2×s)`、`ShowCaption`。
+- 自动适配：Normal 密度显示标签；Compact/Minimal 高度不足（56/44 DIP）隐藏标签，避免第三行文字挤压数字。
+- 自检 `artifacts/ui-selftest27/selftest.txt`：四档 + 自定义 + 长文本全部 `layout=ok texts=8`；
+  `simplified ok=True captionAbove=True captionCentered=True`；`speedAlign` delta 0/0.12/0.12/0/0.33，均 ≤0.5；
+  自动适配 8 组几何仍 `layout=ok`、`moved=False`；定位/固定/设置/重启路径全部通过。
+- 实机标准档 UiDump：标签 `85.3,16.7,54.7×14.7`，数字 `55.3,33.3,114.7×54`，间距 1.9 DIP，水平中心均 112.65；
+  速度块中心 60.3 与数字中心一致。
+- 文档：`docs/02` §1.3、§7.1、§7.6、§7.7 更新并新增 §7.8；`docs/09` 新增 D-079；本日志；`PROJECT_CONTEXT`。
+- 未验证：视觉引擎仍不可用，标签灰度/间距只能靠坐标与像素统计判断；真实鼠标交互仍需人工验收。

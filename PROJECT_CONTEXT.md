@@ -11,7 +11,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 4C-9 已实现（自动适配的拖动边界、自动定位与层级恢复，构建 0/0，385/385 测试通过），等待用户验收；已统一提交 4C-1～4C-9 全部改动（未 push）** |
+| 当前阶段 | **阶段 4C-10 已实现（胶囊"已使用流量"标签移至数字上方，构建 0/0，385/385 测试通过），等待用户验收** |
 | 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）、业务表 v2/v3 与基础仓储/OperationId/时间切分/日汇总/摘要编码（3B-1～3B-5a）；App：胶囊窗口 + `CapsuleViewModel` + `MonitorSessionService` + 窗口位置/尺寸存储 + 托盘 + 设置窗口；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
 | 未实现 | 统计窗口、右键菜单“流量统计”功能、快照/会话持久化管线（StepBuffer、`StepProduced`、`SessionPersistenceService`、Settlement 入口、Writer 状态机）、启动恢复与一致性修复、开机启动、用户选择目标热点 |
 | 下一次要做的事 | 用户验收 4C-9（重点：开启自动适配后胶囊是否落在任务栏底部偏左、能否拖进任务栏、任务栏激活后是否仍被遮挡）；验收后进入统计窗口开发 |
@@ -163,6 +163,15 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - 启动恢复顺序（提交后复验修正）：`OnSourceInitialized` 先 `ApplyAutoFitSizeOnly()` 再 `RestorePosition()`。否则持久化宽度 135.4 会被回退成 Mini 220×71.5，夹取得到 `1066.7 − 71.5 = 995.3`，保存的 1020.7 被改写。修正后同一 state 重启实测 `left=120 top=1020.7`，截图绿色区域 abs y=1531..1596（任务栏 1528..1600）。见 D-078。
 - Git：本次按用户明确授权，将 4C-1～4C-9 的全部产品代码与文档改动统一提交（不含构建产物、日志、临时目录），未 push；启动恢复修复以 amend 追加到同一提交。
 
+### 阶段 4C-10 实际结果（2026-11-13，说明标签移至流量数字上方）
+
+- `CapsuleWindow.xaml` 改为两行：第 0 行"已使用流量"（`TextSecondary`、11×s、下边距 2×s、水平居中），第 1 行流量数字（同列水平居中）与速度块（右列，`VerticalAlignment=Center`）。速度块与数字同处一行，4C-6 的中心对齐不变。
+- `CapsuleViewModel` 新增 `CaptionFontSize`、`CaptionMargin`、`ShowCaption`；普通四档/自定义尺寸与自动适配 Normal 密度显示标签，Compact/Minimal 因高度不足隐藏（44/56 DIP 放不下第三行文字）。
+- 需要明确：4C-8 精简版曾删除该标签；本次按用户新要求重新加入并置于上方，属于对旧决定的有意覆盖，Wi-Fi 图标/连接状态仍保持删除。
+- 验证：`dotnet build` 0/0、`dotnet test` **385/385**；自检 `artifacts/ui-selftest27/selftest.txt`：四档+自定义+长文本 `layout=ok texts=8`，`simplified ok=True captionAbove=True captionCentered=True`，速度对齐 delta ≤0.33；自动适配 8 组几何与定位/固定/重启路径全部通过。
+- 实机标准档：标签 `85.3,16.7,54.7×14.7`、数字 `55.3,33.3,114.7×54`，间距 1.9 DIP，水平中心均为 112.65；速度块中心 60.3 与数字中心一致。见 `docs/images/capsule-caption-above.png`。
+- 未验证：真实鼠标交互、视觉引擎目检（仍不可用，只能依赖坐标与像素统计）。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -256,3 +265,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-13 | 阶段 4C-7：任务栏内部显示可行性验证（独立探针、Explorer 重启/UIA 空隙实测）；结论不内嵌，产品代码未改；新增 D-068 |
 | 2026-11-13 | 阶段 4C-8：自动适配只调尺寸（高度优先 40–104 DIP、三档密度）、胶囊删除 Wi-Fi/状态/说明并放大数字与速度；新增 12 个测试（376 通过）；新增 D-069～D-073；未 commit（混合改动无法安全拆分） |
 | 2026-11-13 | 阶段 4C-9：自动适配可拖入任务栏（显示器边界 + 0 DIP）、首次开启自动定位底部偏左 120 DIP、拖动结束只重算尺寸、`TaskbarCreated` 层级恢复与 `AppLog`；新增 9 个测试（385 通过）；新增 D-074～D-077；统一提交 4C-1～4C-9 全部改动（未 push） |
+| 2026-11-13 | 阶段 4C-10：胶囊说明标签"已使用流量"移到数字上方（两行 Grid，速度块与数字同行保持中心对齐）；普通四档/自定义可见，自动适配 Compact/Minimal 隐藏；更新 docs/02、D-079、日志 |

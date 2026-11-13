@@ -256,9 +256,28 @@ internal static class UiDump
             ? FindTextBlocks(block).Select(t => t.FontSize).DefaultIfEmpty(0).Max()
             : 0;
 
-        var ok = !statusPresent && !captionPresent && !hasWifiPath;
-        return $"simplified ok={ok} statusText={statusPresent} caption={captionPresent} wifiIcon={hasWifiPath} " +
-               $"trafficFont={trafficFont:0.#} speedFont={speedFont:0.#}";
+        var captionAbove = false;
+        var captionCentered = false;
+        var captionVisible = false;
+        if (window.FindName("TrafficCaption") is TextBlock caption &&
+            window.FindName("TrafficValue") is TextBlock trafficValue)
+        {
+            captionVisible = caption.Visibility == Visibility.Visible && caption.ActualWidth > 0;
+            var captionRect = caption.TransformToAncestor(window)
+                .TransformBounds(new Rect(0, 0, caption.ActualWidth, caption.ActualHeight));
+            var trafficRect = trafficValue.TransformToAncestor(window)
+                .TransformBounds(new Rect(0, 0, trafficValue.ActualWidth, trafficValue.ActualHeight));
+            captionAbove = captionRect.Bottom <= trafficRect.Top + 0.5;
+            captionCentered = Math.Abs(captionRect.Left + captionRect.Width / 2 -
+                                       (trafficRect.Left + trafficRect.Width / 2)) <= 0.5;
+        }
+
+        // 自动适配的 Compact/Minimal 密度有意隐藏标签；此时只校验"没有状态文字/图标"。
+        var captionOk = !captionVisible || (captionPresent && captionAbove && captionCentered);
+        var ok = !statusPresent && captionOk && !hasWifiPath;
+        return $"simplified ok={ok} statusText={statusPresent} caption={captionPresent} " +
+               $"captionVisible={captionVisible} captionAbove={captionAbove} captionCentered={captionCentered} " +
+               $"wifiIcon={hasWifiPath} trafficFont={trafficFont:0.#} speedFont={speedFont:0.#}";
     }
 
     /// <summary>把任一 WPF 元素渲染成 PNG；用于 ContextMenu 这类没有独立 Window 的弹出层。</summary>
