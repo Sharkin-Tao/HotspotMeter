@@ -319,3 +319,83 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 ### 6. 下一步
 
 等待用户审核 3A 的代码、测试、文档与提交；批准后再规划 3B（冻结业务表结构与约束）。
+
+---
+
+# 阶段 3B：业务表与数据层（2026-11-13）
+
+3B 被拆成 8 个子步，逐段批准。3B-1～3B-3 在本节之前完成（当时只授权代码，未授权改文档），
+补记如下；3B-4 是本节主体。
+
+| 子步 | 内容 | 提交 |
+| --- | --- | --- |
+| 3B-1 | Schema v2：9 张表、复合外键、部分唯一索引、三态与日期 CHECK | `d08e036` |
+| 3B-2 | `ProfileResolver` / `SessionRepository` / `BssidRepository` | `3b73089` |
+| 3B-3 | `OperationIdFactory` / `SqliteTypeConversion` | `5c40984` |
+| 3B-4 | 时间切分与日汇总（本节） | 本次提交 |
+
+## 阶段 3B-4：时间切分与日流量汇总（2026-11-13）
+
+### 1. 范围与基线
+
+只实现日归属与日汇总的数据层：`LocalDayResolver`、`NightlySplitter`、`EffectiveTimePolicy`、
+`DailyTrafficDelta`、`DailyTrafficRepository`。**不**接入快照写入、StepBuffer、`StepProduced`、
+会话持久化或 UI；不改 Schema v2、`SqliteWriter`、Core、MonitorHost、ApiProbe。
+
+开工复核：`main@5c40984`、工作区干净、173/173 通过；Infrastructure 与解决方案均可构建。
+
+### 2. 新增文件
+
+源码（`HotspotMeter.Infrastructure/Persistence`）：
+
+- `Time/LocalDayResolver.cs`：UTC 偏移分段 + tick 二分求本地日边界；`GetLocalDate`、
+  `GetDayStartUtc`、`EnumerateDayStartsUtc`。
+- `Time/TrafficSegment.cs`：一个本地日片段的只读记录（日期、UTC 区间、三项增量）。
+- `Time/NightlySplitter.cs`：BigInteger 累计取整分配；字节/上传/毫秒各自独立、总和严格守恒。
+- `Time/EffectiveTimePolicy.cs`：墙钟调整的事件级计数（`None/Backward/Forward`、2 s 容差、
+  单调回退单独计数、checked 溢出）。
+- `Repositories/DailyTrafficDelta.cs`：私有构造 + `Create` 全量校验（含 SessionCount 0/1 与
+  First/Last 联动、日期真实性）。
+- `Repositories/DailyTrafficRepository.cs`：非幂等增量 UPSERT（累加、`MIN`/`MAX` 端点）、
+  读取单行；不自开事务、不重试。
+
+测试（84 例）：
+
+- `Unit/Persistence/LocalDayResolverTests.cs` 12 例。
+- `Unit/Persistence/NightlySplitterTests.cs` 24 例。
+- `Unit/Persistence/EffectiveTimePolicyTests.cs` 18 例。
+- `Integration/Persistence/DailyTrafficRepositoryTests.cs` 30 例（真实 SQLite：UPSERT、MIN/MAX、
+  外键、CHECK、回滚、重复应用翻倍）。
+
+### 3. 实现中发现的真实缺陷
+
+`EffectiveTimePolicy.Advance` 首版把墙钟毫秒差**直接当作 tick** 推进有效时间
+（1000 ms 只前进 1000 tick，即 0.1 ms），且墙钟前跳时把有效时间吸附到墙钟，
+导致会话时长被放大。修正为：
+
+- `checked(_lastEffectiveTicks + deltaMilliseconds * TimeSpan.TicksPerMillisecond)`；
+- 有效时间永远取"单调推进值"，墙钟只用于调整事件计数；
+- 单调时钟回退时有效时间保持不动、单独计数。
+
+其余失败全部是我的测试期望算错（1/3 分配、段数、跨时区同日、SessionCount=1 需带端点时间、
+`ClockAdjustmentCount` 含单调回退、`ThrowsAny<ArgumentException>`），均改测试而不改实现。
+
+### 4. 验证
+
+- `dotnet test`：**257/257 通过**（2 s）；原有 173 例全部保留。
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet build tools/MonitorHost/MonitorHost.csproj`：0 警告 0 错误。
+- `git status`：仅本阶段 6 个源码与 4 个测试文件，无临时数据库或日志残留。
+
+### 5. 已知边界
+
+- `DailyTrafficRepository` 不幂等，重复应用会翻倍；幂等必须由 3B-5/3B-7 的
+  "快照 + 日汇总同一事务"保证。
+- 15 分钟粗采样只用于发现偏移变化；若某次偏移变化持续不足 15 分钟且完全落在采样间隙，
+  理论上可能漏检（Windows 时区调整的实际粒度远大于此，暂接受）。
+- Samoa 整日跳过在 Windows tzdata 下的建模与 IANA 不一致，测试只断言与数据无关的性质
+  （边界单调、无重复、无零长度段），未伪造精确时间点。
+
+### 6. 下一步
+
+3B-5：`StepBuffer` / `StepPump` / JSONL 日志与关键步骤保留策略；等待批准。

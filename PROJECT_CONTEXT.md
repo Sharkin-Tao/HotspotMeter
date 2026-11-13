@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 3A 已完成实现（SQLite 基础设施，101/101 测试通过），等待用户审核 3A 后批准 3B** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
-| 未实现 | 业务表与仓储、会话收尾与跨日拆分、启动恢复与日汇总重算、两个窗口、设置页、开机启动 |
-| 下一次要做的事 | 用户审核 3A 的代码/测试/文档/提交；批准后先给 3B 计划（冻结 7 张业务表与约束），再动手 |
+| 当前阶段 | **阶段 3B-4 已完成（时间切分与日流量汇总，257/257 测试通过），等待用户确认后批准 3B-5** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）、业务表 v2 与基础仓储/OperationId/时间切分/日汇总（3B-1～3B-4）；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
+| 未实现 | 快照/会话持久化管线（StepBuffer、`StepProduced`、`SessionPersistenceService`）、启动恢复与一致性修复、两个窗口、设置页、开机启动 |
+| 下一次要做的事 | 用户确认 3B-4 的代码/测试/文档/提交；批准后再实施 3B-5（StepBuffer / StepPump / JSONL） |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
