@@ -948,3 +948,20 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
   速度块中心 60.3 与数字中心一致。
 - 文档：`docs/02` §1.3、§7.1、§7.6、§7.7 更新并新增 §7.8；`docs/09` 新增 D-079；本日志；`PROJECT_CONTEXT`。
 - 未验证：视觉引擎仍不可用，标签灰度/间距只能靠坐标与像素统计判断；真实鼠标交互仍需人工验收。
+
+## 阶段 4C-11：标签与数字统一字体、左对齐
+
+- 需求：标签与数字同字体家族、风格协调；标签在数字上方；左边缘严格对齐；四档/自定义尺寸不重叠、不裁切。
+- 实现：`CapsuleWindow.xaml` 左侧改为 `StackPanel`（标签 → 内层 Grid=数字+速度），标签与数字都
+  `HorizontalAlignment=Left`；新增 `TrafficFontFamily` 资源供二者共用；标签加 `FontWeight=SemiBold`，
+  字号仍 11×s、颜色 `TextSecondary`。数字字号 46×s、字重、颜色未改。
+- 速度区未动：与数字同处内层 Grid 同一行，`VerticalAlignment=Center`，`Margin` 仍为 `SpeedBlockMargin`。
+- `UiDump.CheckSimplifiedContent` 把 `captionCentered` 改为 `captionLeftAligned`，并新增 `captionFontMatch`
+  （比较 `FontFamily.Source`）；断言左边缘差 ≤0.5 DIP。
+- 自检 `artifacts/ui-selftest28/selftest.txt`：四档+自定义+长文本全部 `layout=ok texts=8`，
+  `captionAbove=True captionLeftAligned=True captionFontMatch=True`；速度对齐 delta 0（自动 Minimal 0.33）；
+  自动适配/定位/固定/设置/重启路径全部通过。
+- 实机标准档 UiDump：标签 `x=18,y=16.7,54.7×14.7`，数字 `x=18,y=33.3,146.7×54`，左边缘差 0；间距 1.9 DIP；
+  速度块中心 60.3 = 数字中心 60.3。
+- 文档：`docs/02` §1.3、§7.1、§7.8；`docs/09` D-080（覆盖 D-079 对齐部分）；本日志；`PROJECT_CONTEXT`。
+- 未验证：视觉引擎不可用，字体渲染观感需人工确认；不同 DPI 下字形 bearing 的亚像素差异未单独测量。

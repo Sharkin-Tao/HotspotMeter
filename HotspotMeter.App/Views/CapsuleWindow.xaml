@@ -21,6 +21,11 @@
         FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
         d:DataContext="{d:DesignInstance Type=vm:CapsuleViewModel}">
 
+    <Window.Resources>
+        <!-- 标签与数字共用同一字体家族，避免"说明像另一种字体"的割裂感。 -->
+        <FontFamily x:Key="TrafficFontFamily">Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI</FontFamily>
+    </Window.Resources>
+
     <Window.ContextMenu>
         <ContextMenu Style="{StaticResource CapsuleContextMenuStyle}">
             <!--
@@ -48,46 +53,43 @@
             ToolTip="{Binding TooltipText}"
             MouseLeftButtonDown="OnSurfaceMouseLeftButtonDown">
         <!--
-            4C-10：左侧恢复"已使用流量"说明，并放到数字上方。
-            标签与数字同处第 0 列、各自水平居中，因此标签中心与数字中心对齐；
-            速度块单独占第 1 列的第 1 行，和数字同处一行并 VerticalAlignment=Center，
+            4C-11：标签与数字合并为左侧同一组视觉元素。
+            外层 StackPanel 是二者唯一的垂直布局容器：先标签、后数字，二者都 HorizontalAlignment=Left，
+            因此左边缘由同一个布局基准决定，不靠 Margin/绝对定位模拟。
+            数字与速度块放在内层 Grid 的同一行，速度块仍 VerticalAlignment=Center，
             所以 4C-6 的"速度块中心 = 流量数字中心"关系保持不变。
-            两行整体在外层 Grid 里垂直居中。
         -->
-        <Grid Margin="{Binding CapsuleContentMargin}" VerticalAlignment="Center">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
+        <StackPanel Margin="{Binding CapsuleContentMargin}" VerticalAlignment="Center">
             <TextBlock x:Name="TrafficCaption"
-                       Grid.Row="0" Grid.Column="0"
                        Text="已使用流量"
-                       FontSize="{Binding CaptionFontSize}"
+                       FontFamily="{StaticResource TrafficFontFamily}"
+                       FontSize="{Binding CaptionFontSize}" FontWeight="SemiBold"
                        Foreground="{StaticResource TextSecondary}"
-                       HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                       HorizontalAlignment="Left"
                        Margin="{Binding CaptionMargin}"
                        Visibility="{Binding ShowCaption, Converter={StaticResource BoolToVisibility}}" />
 
-            <!--
-                流量数字放在 Viewbox 里：正常文本不放大；极端长文本（例如 999.9 GB）
-                在窄胶囊中只会等比缩小，绝不会裁切或把速度块挤出窗口。
-            -->
-            <Viewbox Grid.Row="1" Grid.Column="0"
-                     Stretch="Uniform" StretchDirection="DownOnly"
-                     HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock x:Name="TrafficValue"
-                           Text="{Binding SessionText}"
-                           FontFamily="Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI"
-                           FontSize="{Binding TrafficFontSize}" FontWeight="SemiBold" Foreground="White"
-                           LineHeight="{Binding TrafficLineHeight}" LineStackingStrategy="BlockLineHeight" />
-            </Viewbox>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-            <StackPanel x:Name="SpeedBlock" Grid.Row="1" Grid.Column="1"
+                <!--
+                    流量数字放在 Viewbox 里：正常文本不放大；极端长文本（例如 999.9 GB）
+                    在窄胶囊中只会等比缩小，绝不会裁切或把速度块挤出窗口。
+                -->
+                <Viewbox Grid.Column="0"
+                         Stretch="Uniform" StretchDirection="DownOnly"
+                         HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <TextBlock x:Name="TrafficValue"
+                               Text="{Binding SessionText}"
+                               FontFamily="{StaticResource TrafficFontFamily}"
+                               FontSize="{Binding TrafficFontSize}" FontWeight="SemiBold" Foreground="White"
+                               LineHeight="{Binding TrafficLineHeight}" LineStackingStrategy="BlockLineHeight" />
+                </Viewbox>
+
+                <StackPanel x:Name="SpeedBlock" Grid.Column="1"
                         VerticalAlignment="Center" HorizontalAlignment="Right"
                         Grid.IsSharedSizeScope="True"
                         UseLayoutRounding="False"
@@ -120,5 +122,6 @@
                 </Grid>
             </StackPanel>
         </Grid>
+        </StackPanel>
     </Border>
 </Window>
