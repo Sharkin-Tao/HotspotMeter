@@ -65,6 +65,7 @@
                        FontFamily="{StaticResource TrafficFontFamily}"
                        FontSize="{Binding CaptionFontSize}" FontWeight="SemiBold"
                        Foreground="{StaticResource TextSecondary}"
+                       Opacity="0.65"
                        HorizontalAlignment="Left"
                        Margin="{Binding CaptionMargin}"
                        Visibility="{Binding ShowCaption, Converter={StaticResource BoolToVisibility}}" />

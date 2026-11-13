@@ -965,3 +965,19 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
   速度块中心 60.3 = 数字中心 60.3。
 - 文档：`docs/02` §1.3、§7.1、§7.8；`docs/09` D-080（覆盖 D-079 对齐部分）；本日志；`PROJECT_CONTEXT`。
 - 未验证：视觉引擎不可用，字体渲染观感需人工确认；不同 DPI 下字形 bearing 的亚像素差异未单独测量。
+
+## 阶段 4C-12：说明标签降低不透明度
+
+- 需求：只弱化"已使用流量"标签，保持灰色次级色调，Opacity 初值 0.65；字体/字号/字重/位置/左对齐不变；
+  不得通过父容器透明度实现，数字与速度区外观不受影响。
+- 实现：`CapsuleWindow.xaml` 的 `TrafficCaption` 加 `Opacity="0.65"`；数字、速度块、外层 `StackPanel` 的
+  `Opacity` 均保持默认 1.0。未改绑定、布局、数据与交互。
+- `UiDump.CheckSimplifiedContent` 新增 `captionOpacity`、`trafficOpacity`、`opacityIsolated`（标签 0.65、
+  数字 ≥0.999、父容器 ≥0.999），并把 `opacityIsolated` 纳入 `ok`。
+- 自检 `artifacts/ui-selftest29/selftest.txt`：四档 + 自定义 + 长文本全部 `layout=ok texts=8`、
+  `captionOpacity=0.65 trafficOpacity=1.00 opacityIsolated=True`；速度对齐 delta 0（自动 Minimal 0.33）；
+  自动适配/定位/固定/设置/重启路径全部通过。
+- 对比度实测：绿底合成 `#739A82`、1.34:1；红底合成 `#AE7577`、1.55:1；实心灰原本为 1.63:1 / 2.25:1。
+  已在 `docs/02` §7.9 与 D-081 记录取舍，未宣称满足 WCAG AA。
+- 文档：`docs/02` §1.3/§1.5/§7.1/§7.8/§7.9；`docs/09` D-081；本日志；`PROJECT_CONTEXT`。
+- 未验证：视觉引擎仍不可用，实际柔和程度需人工目检；65% 在 11 px 下的可辨性未做用户测试。

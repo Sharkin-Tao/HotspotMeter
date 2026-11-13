@@ -260,6 +260,9 @@ internal static class UiDump
         var captionLeftAligned = false;
         var captionFontMatch = false;
         var captionVisible = false;
+        var captionOpacity = 0.0;
+        var trafficOpacity = 0.0;
+        var opacityIsolated = false;
         if (window.FindName("TrafficCaption") is TextBlock caption &&
             window.FindName("TrafficValue") is TextBlock trafficValue)
         {
@@ -272,15 +275,23 @@ internal static class UiDump
             captionLeftAligned = Math.Abs(captionRect.Left - trafficRect.Left) <= 0.5;
             captionFontMatch = string.Equals(
                 caption.FontFamily.Source, trafficValue.FontFamily.Source, StringComparison.OrdinalIgnoreCase);
+            captionOpacity = caption.Opacity;
+            trafficOpacity = trafficValue.Opacity;
+            // 透明度必须只加在标签自身：数字不透明，且共用的父容器也不透明。
+            opacityIsolated = Math.Abs(captionOpacity - 0.65) <= 0.001
+                              && trafficOpacity >= 0.999
+                              && (caption.Parent is not FrameworkElement parent || parent.Opacity >= 0.999);
         }
 
         // 自动适配的 Compact/Minimal 密度有意隐藏标签；此时只校验"没有状态文字/图标"。
         var captionOk = !captionVisible ||
                         (captionPresent && captionAbove && captionLeftAligned && captionFontMatch);
-        var ok = !statusPresent && captionOk && !hasWifiPath;
+        var ok = !statusPresent && captionOk && !hasWifiPath && (!captionVisible || opacityIsolated);
         return $"simplified ok={ok} statusText={statusPresent} caption={captionPresent} " +
                $"captionVisible={captionVisible} captionAbove={captionAbove} " +
                $"captionLeftAligned={captionLeftAligned} captionFontMatch={captionFontMatch} " +
+               $"captionOpacity={captionOpacity:0.00} trafficOpacity={trafficOpacity:0.00} " +
+               $"opacityIsolated={opacityIsolated} " +
                $"wifiIcon={hasWifiPath} trafficFont={trafficFont:0.#} speedFont={speedFont:0.#}";
     }
 
