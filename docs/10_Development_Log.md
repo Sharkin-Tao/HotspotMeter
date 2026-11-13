@@ -399,3 +399,52 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 ### 6. 下一步
 
 3B-5：`StepBuffer` / `StepPump` / JSONL 日志与关键步骤保留策略；等待批准。
+
+## 阶段 3B-5a：Schema v3、UTC 时间戳与操作摘要编码（2026-11-13）
+
+### 1. 范围
+
+用户 m02109 仅批准四项：Schema v3 及迁移、`UtcTimestamp`、操作摘要与 PayloadDigest 编码、
+对应测试与必要文档。**不**实现 Settlement 专用入口、`SqliteWriter` Faulted 状态机、午夜调度器；
+不改 `MonitorEngine`、不引后台定时线程、不弱化既有约束。
+
+### 2. 新增文件
+
+- `Persistence/SchemaV3.cs`：`TrafficOperations` 表与 `IX_Operations_Session_FromUtc` 索引；
+  `TimeCheck` 生成经 SQLite 3.53.3 实测修正的 UTC 文本约束。
+- `Persistence/Time/UtcTimestamp.cs`：固定格式 `yyyy-MM-dd'T'HH:mm:ss.fffffff'+00:00'`（33 字符）、
+  `Format`/`FromUtc`/`TryParse`/`Parse`/`IsWellFormed`，只接受零偏移且要求格式化往返一致。
+- `Persistence/Operations/SnapshotWriteCommand.cs`：`SnapshotQualityFlags`、`SegmentInput`、
+  `SnapshotWriteCommand` 与结构校验（不含任何写库行为）。
+- `Persistence/Operations/OperationContentDigest.cs`：二进制规范化编码（版本字节 + 长度前缀域串 +
+  大端定长整数 + 长度前缀 UTF-8），`ComputeRequest` 与 `ComputePayload`，SHA-256 小写十六进制。
+- `SchemaMigrator`：`SupportedVersion = 3`，追加 `business-schema-v3` 迁移。
+
+### 3. 关键设计
+
+- `TrafficOperations` 是"操作级幂等"的载体：一次逻辑写入对应一行，快照分段仍落在
+  `TrafficSnapshots`；操作行带 `RequestDigest`、`PayloadDigest`、`SegmentCount`、水位终值与
+  `AppliedAtUtc`，`UNIQUE(DbSessionId, OperationSequence)` 锁定会话内顺序。
+- 时间列用定长 UTC 文本而非 SQLite 的宽松日期解析；`24:00:00` 与 `29:00:00` 的实测漏洞都已由
+  自动化测试钉住。
+- 摘要编码刻意不拼接分隔符字符串：时区 ID 等自由文本不可能通过注入分隔符制造碰撞，
+  字段边界由长度前缀和定长整数保证。
+
+### 4. 验证
+
+- `dotnet test`：**348/348 通过**（2 s）；原 257 例全部保留，新增 91 例。
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet build tools/MonitorHost/MonitorHost.csproj`：0 警告 0 错误。
+- 刻意调整 `SchemaV2Tests` 两处版本断言（2 → 3）并加入 `TrafficOperations` 期望表：
+  schema 版本推进属于预期变更，不是弱化约束。
+
+### 5. 已知边界
+
+- 摘要只证明"同样的输入得到同样的字节串"，不证明输入本身合法；合法性仍由
+  `SnapshotWriteCommand.Validate`、数据库 CHECK 与后续服务层共同保证。
+- `TrafficOperations` 尚未被任何写入路径使用；真正的幂等事务在 3B-5b 及之后接入。
+- 未用于 3D 的"从数据库行重算 PayloadDigest"：编码器已接受完整字段集，但行映射留给 3B-5b。
+
+### 6. 下一步
+
+等待用户代码审查与 3B-5a 最终验收；通过后才提交并推送。3B-5b 未获授权。

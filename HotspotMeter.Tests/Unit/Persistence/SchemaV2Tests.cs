@@ -1,4 +1,4 @@
-﻿using HotspotMeter.Infrastructure.Persistence;
+using HotspotMeter.Infrastructure.Persistence;
 using HotspotMeter.Tests.TestSupport;
 using Microsoft.Data.Sqlite;
 
@@ -16,12 +16,12 @@ public class SchemaV2Tests
     private const string TimeZoneId = "Asia/Shanghai";
 
     [Fact]
-    public void Migrate_CreatesAllV2Tables_AndReportsVersion2()
+    public void Migrate_CreatesAllV2Tables_AndReachesLatestVersion()
     {
         using var temp = new TempDirectory();
         using var connection = CreateMigratedConnection(temp);
 
-        Assert.Equal(2, SchemaMigrator.ReadUserVersion(connection));
+        Assert.Equal(3, SchemaMigrator.ReadUserVersion(connection));
 
         var tables = ReadNames(connection, "table");
         Assert.Superset(
@@ -36,6 +36,7 @@ public class SchemaV2Tests
                 "DailyTraffic",
                 "RecoveryGaps",
                 "AppSettings",
+                "TrafficOperations",
             },
             tables);
     }
@@ -53,7 +54,7 @@ public class SchemaV2Tests
 
         var version = new SchemaMigrator().Migrate(connection);
 
-        Assert.Equal(2, version);
+        Assert.Equal(3, version);
         Assert.Equal(1, Count(connection, "SELECT COUNT(*) FROM SchemaInfo WHERE Key = 'created_at_utc';"));
         Assert.Equal(1, Count(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'TrafficSnapshots';"));
     }

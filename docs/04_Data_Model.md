@@ -182,6 +182,48 @@ CREATE TABLE AppSettings (
 
 建议的键（阶段 6 定稿）：`target.hotspotId`、`sample.intervalMs`、`floating.isPinned`、`floating.x`、`floating.y`、`floating.screenId`、`stats.window.width/height`、`app.autoStart`、`log.level`、`data.retentionDays`。
 
+### 3.7 TrafficOperations（v3，阶段 3B-5a）
+
+> 本节与 `SchemaV3.cs` 同步；§3.1–§3.6 中仍残留早期草案的列名（如 `HotspotId`、`ConnectedSeconds`、
+> `EndTimeUtc`），以代码中的 `SchemaV2.cs` / `SchemaV3.cs` 为准，后续随迁移逐节校正。
+
+```sql
+CREATE TABLE TrafficOperations (
+    OperationRowId        INTEGER PRIMARY KEY AUTOINCREMENT,
+    OperationId           TEXT    NOT NULL UNIQUE,     -- op:{session}:{kind}:{fromTicks}:{toTicks}
+    OperationSequence     INTEGER NOT NULL,            -- 会话内严格递增，从 1 开始
+    OperationType         INTEGER NOT NULL,            -- 1 检查点 / 2 结算 / 3 恢复合并
+    DbSessionId           INTEGER NOT NULL,
+    ProfileId             INTEGER NOT NULL,
+    FromUtc               TEXT    NOT NULL,            -- 33 字符 UTC 文本
+    ToUtc                 TEXT    NOT NULL,
+    CapturedAtUtc         TEXT    NOT NULL,
+    AppliedAtUtc          TEXT    NOT NULL,
+    DownloadBytesAfter    INTEGER NOT NULL,            -- 操作完成后的会话累计
+    UploadBytesAfter      INTEGER NOT NULL,
+    ConnectedMilliseconds INTEGER NOT NULL,
+    SegmentCount          INTEGER NOT NULL,            -- 1..400
+    TimeZoneId            TEXT    NOT NULL,
+    QualityFlags          INTEGER NOT NULL,
+    RequestDigest         TEXT    NOT NULL,            -- 64 位小写十六进制
+    PayloadDigest         TEXT    NOT NULL,
+    UNIQUE (DbSessionId, OperationSequence),
+    FOREIGN KEY (DbSessionId, ProfileId) REFERENCES ConnectionSessions (SessionId, ProfileId)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CHECK (OperationSequence >= 1),
+    CHECK (OperationType IN (1, 2, 3)),
+    CHECK (SegmentCount BETWEEN 1 AND 400),
+    CHECK (FromUtc <= ToUtc),
+    CHECK (CapturedAtUtc >= ToUtc),
+    CHECK (length(RequestDigest) = 64 AND RequestDigest NOT GLOB '*[^0-9a-f]*'),
+    CHECK (length(PayloadDigest) = 64 AND PayloadDigest NOT GLOB '*[^0-9a-f]*')
+);
+```
+
+时间列在真实 DDL 中还带长度、GLOB、年月日时范围、`strftime` 非空与往返一致的组合校验
+（见 `SchemaV3.TimeCheck`）。`TrafficOperations` 只承载操作级幂等信息，分段仍写
+`TrafficSnapshots`；该表在 3B-5a 只建表，尚未接入写入路径。
+
 ## 4. 关键查询（草案）
 
 ```sql

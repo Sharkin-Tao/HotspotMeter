@@ -97,6 +97,20 @@ COMMIT;
 4. 墙钟调整（回拨/前跳）用 `EffectiveTimePolicy` 做事件级计数，容差 2 s；
    持续同一方向的抖动只计一次事件，恢复后再次调整才计第二次。会话测速仍只用单调时钟。
 
+### 3.4 操作级幂等的基础（3B-5a 已建表，尚未接入写入）
+
+1. Schema v3 新增 `TrafficOperations`：一次逻辑写入一行，带 `OperationId`（唯一）、
+   会话内 `OperationSequence`（唯一）、`OperationType`（1 检查点 / 2 结算 / 3 恢复合并）、
+   应用后的累计字节与连接毫秒、`SegmentCount`、`RequestDigest`、`PayloadDigest`、`AppliedAtUtc`。
+2. 时间列统一为 33 字符 UTC 文本（`yyyy-MM-dd'T'HH:mm:ss.fffffff'+00:00'`），
+   数据库 CHECK 与 C# `UtcTimestamp` 双重校验；`24:00:00`、`29:00:00` 等 SQLite 宽松解析漏洞
+   已由测试钉住。
+3. 请求摘要与载荷摘要分离：请求摘要排除 `OperationId`/序号/采集时刻/分段，重试不改变请求身份；
+   载荷摘要覆盖全部落库字段，供将来从数据库行重算比对。
+4. **边界**：3B-5a 只建表与编码器，没有任何写入路径使用它们；
+   "操作行 + 全部快照 + 日汇总 + 水位"同一事务、提交结果不确定时的重读核验，
+   都要等 3B-5b 及之后实现，当前仍可能重复写入。
+
 ## 4. 进程崩溃（未捕获异常/强制结束）
 
 - 已提交事务的数据保留；

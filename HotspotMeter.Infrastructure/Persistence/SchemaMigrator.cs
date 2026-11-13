@@ -44,10 +44,11 @@ public sealed record DatabaseMigration(
 public sealed class SchemaMigrator
 {
     /// <summary>当前程序支持的最高模式版本。</summary>
-    public const int SupportedVersion = 2;
+    public const int SupportedVersion = 3;
 
     /// <summary>
-    /// 默认迁移集合。v1 只有元数据表；v2 是阶段 3B 审核通过的业务表结构。
+    /// 默认迁移集合。v1 只有元数据表；v2 是阶段 3B 审核通过的业务表结构；
+    /// v3 是快照操作表（幂等与操作级摘要）。
     /// 已发布的版本不得修改，后续变更只能追加新版本。
     /// </summary>
     public static readonly IReadOnlyList<DatabaseMigration> DefaultMigrations = new[]
@@ -69,6 +70,10 @@ public sealed class SchemaMigrator
             Version: 2,
             Name: "business-schema-v2",
             Statements: SchemaV2.Statements),
+        new DatabaseMigration(
+            Version: 3,
+            Name: "business-schema-v3",
+            Statements: SchemaV3.Statements),
     };
 
     private readonly IReadOnlyList<DatabaseMigration> _migrations;

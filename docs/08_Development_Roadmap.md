@@ -109,7 +109,7 @@
 2. **3B-2 基础仓储** — 已完成（`3b73089`）：`ProfileResolver`、`SessionRepository`（会话+映射同事务、关闭、清理陈旧映射）、`BssidRepository`（观察/确认分离）。
 3. **3B-3 操作键与类型转换** — 已完成（`5c40984`）：`OperationIdFactory`（`op:{dbSessionId}:{kind}:{fromTicks}:{toTicks}`）、`SqliteTypeConversion`（ulong 溢出显式拒绝，不写 REAL）。
 4. **3B-4 时间切分与日汇总** — 已完成（本阶段）：`LocalDayResolver`（UTC 分段 + tick 二分）、`NightlySplitter`（BigInteger 累计分配，严格守恒）、`EffectiveTimePolicy`（事件级墙钟调整计数）、`DailyTrafficDelta`、`DailyTrafficRepository`（非幂等 UPSERT，MIN/MAX 端点）。
-5. **3B-5 StepBuffer / StepPump / Journal** — 待批准：三段式关键步骤保留（队列→单槽→JSONL）、按 `Sequence` 重排、30 s 降级。
+5. **3B-5 StepBuffer / StepPump / Journal** — 部分完成：3B-5a（Schema v3、`UtcTimestamp`、摘要编码、91 例测试）已实现待验收；3B-5b 起（Settlement 入口、Writer 状态机、午夜调度、StepBuffer/Pump/Journal）待批准。
 6. **3B-6 Core 扩展** — 待批准：`MonitorStep.Baseline`、`TargetProfileId`、`StepProduced`、BSSID 未确认暂停、采样背压。
 7. **3B-7 SessionPersistenceService** — 待批准：把 step 落成会话/快照/日汇总/恢复候选，单事务与提交不确定重读。
 8. **3B-8 集成测试、文档与回归** — 待批准。
@@ -196,7 +196,7 @@
 
 ## 当前阻塞/待确认
 
-1. 阶段 3A、3B-1～3B-4 已实现并通过测试；3B-5 起等待用户逐段批准，未确认不得开始。
+1. 阶段 3A、3B-1～3B-4 已实现并通过测试，3B-5a 已实现待用户验收；3B-5b 起等待用户逐段批准，未确认不得开始。
 2. 01 文档第 4 节的 5 个产品问题（会话合并、托盘、默认范围、重置、采样间隔可配置）——其中采样间隔已有默认值 1000 ms / 最小 500 ms，其余仍待定。
 3. 04 文档第 9 节的保留期与导出问题。
 4. `E:\hotspotmeter\HotspotMeter` 旧位置残留目录与 `E:\hotspotmeter-clone-git-backup` 的最终处置（见 `docs/09` D-025）。

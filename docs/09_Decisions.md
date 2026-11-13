@@ -369,3 +369,38 @@
   `DailyTrafficRepository.ApplyAsync` 明确**不幂等**：只做增量累加与 MIN/MAX 端点，
   不自开事务、不重试；调用方必须把它和快照插入放在同一事务里。
 - 影响：测试锁定"重复应用翻倍"的语义；3B-5/3B-7 若忘记事务边界会被该测试立刻暴露。
+
+## D-044 操作级幂等用独立 `TrafficOperations` 行承载，不扩宽 `TrafficSnapshots`
+
+- 状态：已决定并实现 v3 表（阶段 3B-5a）；写入路径未接入
+- 背景：`TrafficSnapshots` 的唯一键只有 `(OperationId, SegmentIndex)`，无法保存"这次操作请求的
+  完整内容""应用后的水位终值""操作序号"等操作级事实；把这些字段塞进每个分段会重复 400 份。
+- 决策：新增 `TrafficOperations`，一行对应一次逻辑写入，分段仍在 `TrafficSnapshots`；
+  两表都以 `OperationId` 关联。`UNIQUE(OperationId)`、`UNIQUE(DbSessionId, OperationSequence)`
+  分别防重复操作与会话内序号分叉；`SegmentCount 1..400` 与 `OperationType IN (1,2,3)` 由 CHECK 锁定。
+  该表用复合外键 `(DbSessionId, ProfileId)` 与会话绑定，防止跨 Profile 挂接。
+- 影响：请求去重、载荷核验、水位推进都围绕操作行完成；重置标记（Kind=4）不预埋，
+  将来需要零分段操作时走 v4 迁移重建表，避免现在留下永远为 NULL 的列。
+
+## D-045 UTC 时间戳用定长 33 字符文本 + 实测加固的 CHECK
+
+- 状态：已决定并实现（阶段 3B-5a）
+- 背景：SQLite 的日期函数比想象中宽松。实测 3.53.3：`2026-11-13T24:00:00.0000000+00:00`
+  被当作合法时间且 `strftime` 往返相等；`29:00:00` 让 `strftime` 返回 NULL，
+  而 `NULL = ...` 在 CHECK 中不算 FALSE，于是直接放行。
+- 决策：所有时间列统一存 `yyyy-MM-dd'T'HH:mm:ss.fffffff'+00:00'`（33 字符、零偏移）；
+  CHECK 同时要求长度、GLOB 形状、年月日时范围、`strftime(...) IS NOT NULL` 与
+  `strftime(...) = substr(x,1,19)`。C# 侧由 `UtcTimestamp` 统一格式化/解析并做往返校验。
+- 影响：上述两个漏洞都有集成测试钉住；未来升级 SQLite provider 若语义变化会先失败。
+  代价是时间列不可读性略差于 ISO 变体，但可比较、可索引、跨时区无歧义。
+
+## D-046 摘要用二进制规范化编码，不用分隔符字符串
+
+- 状态：已决定并实现（阶段 3B-5a）
+- 背景：`TimeZoneId`、`OperationId` 等是自由文本；若用 `|` 拼接，
+  构造含分隔符的字符串就可能让两组不同输入产生相同摘要。
+- 决策：摘要输入按"版本字节 + 域串长度前缀 + 大端定长整数 + 长度前缀 UTF-8 字符串"编码，
+  域前缀区分请求（`HMOPS-REQ`）与载荷（`HMOPS-PAY`）；输出 SHA-256 小写十六进制。
+  请求摘要排除 `OperationId`/`OperationSequence`/`CapturedAtUtc`/分段（重试不应改变请求身份），
+  载荷摘要覆盖全部落库字段（供 3D 从行重算比对）。
+- 影响：编码是确定性的、与时区无关、字段边界无歧义；测试覆盖逐字段敏感性与分隔符注入。
