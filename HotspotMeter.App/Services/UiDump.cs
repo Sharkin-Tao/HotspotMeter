@@ -320,6 +320,24 @@ internal static class UiDump
                $"wifiIcon={hasWifiPath} trafficFont={trafficFont:0.#} speedFont={speedFont:0.#}";
     }
 
+    /// <summary>
+    /// 流量数字的诊断摘要：区分“声明字号”和“Viewbox 实际渲染尺寸”，
+    /// 用来确认自动适配放大字号后没有被窄列二次缩小抵消。
+    /// </summary>
+    public static string DescribeTrafficValue(Window window, string name = "TrafficValue")
+    {
+        if (window.FindName(name) is not TextBlock text || text.ActualWidth <= 0)
+        {
+            return "traffic=missing";
+        }
+
+        var rect = text.TransformToAncestor(window)
+            .TransformBounds(new Rect(0, 0, text.ActualWidth, text.ActualHeight));
+        var scale = text.ActualHeight > 0 ? rect.Height / text.ActualHeight : 1;
+        return $"traffic=font={text.FontSize:0.#} line={text.LineHeight:0.#} " +
+               $"rect={rect.X:0.#},{rect.Y:0.#},{rect.Width:0.#}x{rect.Height:0.#} renderScale={scale:0.000}";
+    }
+
     /// <summary>把任一 WPF 元素渲染成 PNG；用于 ContextMenu 这类没有独立 Window 的弹出层。</summary>
     public static void SaveElementPng(FrameworkElement element, string path)
     {

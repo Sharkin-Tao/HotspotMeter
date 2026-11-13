@@ -156,8 +156,10 @@ public partial class App
                 $"autofit.real=left={_capsule.Left:0.#} top={_capsule.Top:0.#} " +
                 $"size={_capsuleViewModel.Size.Width:0.#}x{_capsuleViewModel.Size.Height:0.#} " +
                 $"density={_capsuleViewModel.Density} labels={_capsuleViewModel.ShowSpeedLabels} " +
+                $"trafficFont={_capsuleViewModel.TrafficFontSize:0.#} fontScale={_capsuleViewModel.TrafficFontScale:0.00} " +
                 $"layout={UiDump.CheckLayout(_capsule)}");
             log.AppendLine(UiDump.CheckSpeedAlignment(_capsule));
+            log.AppendLine(UiDump.DescribeTrafficValue(_capsule));
             log.AppendLine(UiDump.CheckSimplifiedContent(_capsule));
             UiDump.SavePng(_capsule, Path.Combine(directory, "capsule-autofit.png"));
 
@@ -255,6 +257,7 @@ public partial class App
                     $"actualSize={_capsuleViewModel.Size.Width:0.#}x{_capsuleViewModel.Size.Height:0.#} " +
                     $"density={_capsuleViewModel.Density} fits={expected.FitsTaskbar} " +
                     $"moved={moved} layout={UiDump.CheckLayout(_capsule)} " +
+                    $"{UiDump.DescribeTrafficValue(_capsule)} " +
                     $"speed={UiDump.DescribeSpeedBlock(_capsule)}");
             }
 
@@ -285,7 +288,8 @@ public partial class App
             await Task.Delay(400);
             log.AppendLine(
                 $"autofit.disabled size={_capsuleViewModel.Size.Width:0.#}x{_capsuleViewModel.Size.Height:0.#} " +
-                $"enabled={AutoFitTaskbar} density={_capsuleViewModel.Density}");
+                $"enabled={AutoFitTaskbar} density={_capsuleViewModel.Density} " +
+                $"trafficFont={_capsuleViewModel.TrafficFontSize:0.#} fontScale={_capsuleViewModel.TrafficFontScale:0.00}");
 
             // 设置窗口开关：走 SettingsViewModel → ISettingsHost → CapsuleWindow 的真实链路，
             // 并确认状态已经写入 ui-state.json（重启后据此恢复）。

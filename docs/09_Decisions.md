@@ -808,3 +808,25 @@
   若未来允许内嵌字体（如思源黑体 SemiBold），可重新评估。
 - 备选与否决：只把标签改成雅黑 Bold、数字保留 Segoe——不满足"同字体家族"，且宽度差异仍在；
   用 `Typography` 或透明度掩盖——用户明确禁止掩盖；内嵌第三方字体——增加体积与授权问题，超出本次范围。
+
+## D-083 自动适配任务栏时流量数字放大 18%，最简档收窄水平内边距
+
+- 状态：已决定（阶段 4C-14）
+- 背景：任务栏内胶囊高度只有 40–104 DIP，流量数字是唯一核心信息，用户要求自动适配模式下更醒目。
+- 决策：
+  1. 自动适配路径（`ApplyDensityMetrics`）的 `TrafficFontSize` 与 `TrafficLineHeight` 统一乘 `1.18`
+     （`CapsuleViewModel.AutoFitTrafficFontScale`）；普通四档/自定义路径 `ApplyNormalMetrics` 保持 1.0。
+  2. 最简密度（44 DIP 高，48 DIP 任务栏的默认结果）把 `CapsuleContentMargin` 的水平值 7→5、
+     `SpeedBlockMargin` 左值 6→4。原因：数字放在 `Viewbox StretchDirection=DownOnly` 中，列宽不足时
+     会把放大后的字号又缩回去；省下的 6 DIP 让 `renderScale` 从 0.91 回到 1.00，18% 才真正可见。
+  3. 胶囊宽高、定位、置顶、拖动、速度字号与颜色均不变。
+- 修复的隐性缺陷：`SetSize` 原先在 `_density == Normal && size.IsNearly(_size)` 时提前返回；
+  自动适配的 Normal 密度也标记为 Normal，若关闭自动适配时尺寸同为 320×104，会保留 1.18 倍率，
+  造成"关闭后数字仍偏大"。现在提前返回还需 `TrafficFontScale == 1.0`。
+- 验证：`artifacts/ui-selftest34/selftest.txt` 最简档 `trafficFont=18.9 fontScale=1.18`、
+  `renderScale=1.000`、`traffic rect=72×22.7`、`layout=ok`；关闭自动适配后 `trafficFont=46 fontScale=1.00`；
+  四档/自定义字体仍为 31.6/40.3/46/57.5，未受影响。
+- 代价与限制：紧凑/正常密度的数字列仍受胶囊宽度与速度区挤压，7–8 字符长数值的 `renderScale` 可低至
+  0.56–0.83，声明字号变大但渲染尺寸受几何上限约束；要在这两档强制放大只能加宽胶囊或压缩速度区，未做。
+- 备选与否决：把倍率做成设置项——需求未要求，增加配置面；直接给数字设固定大字号——脱离尺寸体系，
+  小任务栏会溢出；改 `Viewbox` 为 `Both`——短数字会被拉到满宽，破坏字号一致性。

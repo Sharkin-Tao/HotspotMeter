@@ -1004,3 +1004,21 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
   `Viewbox` 只缩不裁。像素截图标签主色仍为 `#739B82`（65% 合成），说明透明度未被破坏。
 - 文档：`docs/02` §1.6/§7.1/§7.8/新增 §7.10；`docs/09` D-082；本日志；`PROJECT_CONTEXT`。
 - 未验证：雅黑 Bold 在 11 px + 65% 下的实际观感仍需人工目检；视觉引擎仍不可用。
+
+## 阶段 4C-14：自动适配任务栏的流量数字放大 18%
+
+- 需求：仅自动适配模式增大流量数字 15%–20%；关闭立即恢复；四档/自定义、DPI、定位、拖动不变。
+- 实现：`CapsuleViewModel.AutoFitTrafficFontScale=1.18`；`ApplyDensityMetrics` 对字号与行高统一乘倍率，
+  `ApplyNormalMetrics` 固定 1.0；最简密度水平内边距 7→5、速度区间距 6→4，把 6 DIP 让给数字。
+- 隐性缺陷：`SetSize` 的提前返回只看"密度 Normal + 尺寸相同"，自动 Normal 与手动 320×104 无法区分，
+  关闭自动适配时倍率残留（实测 `trafficFont=54.3 fontScale=1.18`）。提前返回条件补 `TrafficFontScale == 1.0`，
+  复测恢复 `trafficFont=46 fontScale=1.00`。
+- 诊断增强：`UiDump.DescribeTrafficValue` 输出声明字号、行高、渲染矩形与 `renderScale`，
+  用来发现 `Viewbox` 因列宽不足抵消放大。
+- 自检 `artifacts/ui-selftest34/selftest.txt`：最简档 `trafficFont=18.9 fontScale=1.18 renderScale=1.000`、
+  数字矩形 72×22.7、`layout=ok texts=8`；40 DIP 最矮档数字 72×22.7 仍在窗口内；速度中心偏差 ≤0.33；
+  关闭后 `trafficFont=46 fontScale=1.00`；四档/自定义字号与布局不变。
+- 构建 0/0；`dotnet test` 385/385。
+- 限制（如实记录）：紧凑/正常密度下数字列被胶囊宽度与速度区挤压，7–8 字符长数值仍受 `Viewbox` 列宽缩放
+  （renderScale 0.56–0.83），声明字号变大但渲染尺寸接近原值；最简档（48 DIP 任务栏）已完整实现 18%。
+- 文档：`docs/02` §7.5/§7.7、`docs/09` D-083、本日志、`PROJECT_CONTEXT`。

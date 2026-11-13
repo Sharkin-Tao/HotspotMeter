@@ -125,6 +125,18 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
 
     public double TrafficFontSize { get; private set; }
 
+    /// <summary>
+    /// 当前流量数字相对基准字号的倍率。普通四档/自定义为 1.0；自动适配任务栏为
+    /// <see cref="AutoFitTrafficFontScale"/>。
+    /// </summary>
+    public double TrafficFontScale { get; private set; } = 1.0;
+
+    /// <summary>
+    /// 自动适配模式下流量数字的放大倍率。任务栏里的胶囊高度只有 40–104 DIP，
+    /// 数字是唯一的核心信息，比普通悬浮模式再放大 18% 更易读；普通模式不受影响。
+    /// </summary>
+    public const double AutoFitTrafficFontScale = 1.18;
+
     public double TrafficLineHeight { get; private set; }
 
     /// <summary>流量数字上方的说明标签字号。</summary>
@@ -173,8 +185,10 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
     /// </summary>
     public void SetSize(CapsuleSize size)
     {
-        if (_density == CapsuleDensity.Normal && size.IsNearly(_size))
+        if (_density == CapsuleDensity.Normal && size.IsNearly(_size) && TrafficFontScale == 1.0)
         {
+            // 自动适配的 Normal 密度同样是 Normal，但字号带 1.18 倍率；
+            // 若只比较尺寸，关闭自动适配时会被这里提前返回，倍率永久残留。
             return;
         }
 
@@ -206,6 +220,7 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
     private void ApplyNormalMetrics()
     {
         var s = _size.Scale;
+        TrafficFontScale = 1.0;
         CapsuleCornerRadius = new CornerRadius(20 * s);
         CapsuleContentMargin = new Thickness(18 * s, 14 * s, 18 * s, 14 * s);
         TrafficFontSize = 46 * s;
@@ -221,14 +236,16 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
 
     private void ApplyDensityMetrics(CapsuleDensity density)
     {
+        // 只有自动适配模式会走到这里；普通四档/自定义走 ApplyNormalMetrics，倍率保持 1.0。
+        TrafficFontScale = AutoFitTrafficFontScale;
         switch (density)
         {
             case CapsuleDensity.Normal:
                 var s = Math.Clamp(_size.Height / CapsuleSize.DefaultHeight, 0.8, 1.0);
                 CapsuleCornerRadius = new CornerRadius(20 * s);
                 CapsuleContentMargin = new Thickness(18 * s, 14 * s, 18 * s, 14 * s);
-                TrafficFontSize = 46 * s;
-                TrafficLineHeight = 54 * s;
+                TrafficFontSize = 46 * s * TrafficFontScale;
+                TrafficLineHeight = 54 * s * TrafficFontScale;
                 CaptionFontSize = 11 * s;
                 CaptionMargin = new Thickness(0, 0, 0, 2 * s);
                 SpeedFontSize = 14 * s;
@@ -241,8 +258,8 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
             case CapsuleDensity.Compact:
                 CapsuleCornerRadius = new CornerRadius(16);
                 CapsuleContentMargin = new Thickness(12, 9, 12, 9);
-                TrafficFontSize = 30;
-                TrafficLineHeight = 34;
+                TrafficFontSize = 30 * TrafficFontScale;
+                TrafficLineHeight = 34 * TrafficFontScale;
                 SpeedFontSize = 12;
                 SpeedBlockMargin = new Thickness(10, 0, 0, 0);
                 SpeedArrowMargin = new Thickness(0, 0, 3, 0);
@@ -252,12 +269,15 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
 
             default:
                 // 最小可读档：40–55 DIP 高。字号不再随高度线性缩小，避免低于 8 DIP。
+                // 水平内边距从 7 收到 5、与速度区间距从 6 收到 4：数字放大 18% 后，
+                // 若仍沿用旧边距，Viewbox 会因列宽不足把字号又缩回去，放大等于没发生。
+                // 胶囊宽高不变，只把省下的 6 DIP 让给数字；垂直方向仍留 5 DIP。
                 CapsuleCornerRadius = new CornerRadius(12);
-                CapsuleContentMargin = new Thickness(7, 5, 7, 5);
-                TrafficFontSize = 16;
-                TrafficLineHeight = 19;
+                CapsuleContentMargin = new Thickness(5, 5, 5, 5);
+                TrafficFontSize = 16 * TrafficFontScale;
+                TrafficLineHeight = 19 * TrafficFontScale;
                 SpeedFontSize = 8.5;
-                SpeedBlockMargin = new Thickness(6, 0, 0, 0);
+                SpeedBlockMargin = new Thickness(4, 0, 0, 0);
                 SpeedArrowMargin = new Thickness(0, 0, 2, 0);
                 SpeedLabelMargin = new Thickness(0, 0, 3, 0);
                 SpeedRowSpacing = new Thickness(0, 2, 0, 0);

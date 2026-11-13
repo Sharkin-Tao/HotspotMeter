@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 4C-13 已实现（胶囊标签与数字统一 `Microsoft YaHei UI` + Bold，消除中文回退与字重错配；构建 0/0，385/385 测试通过），等待用户验收** |
+| 当前阶段 | **阶段 4C-14 已实现（自动适配任务栏时流量数字 ×1.18，关闭立即恢复；最简档 renderScale=1.000；构建 0/0，385/385 测试通过），等待用户验收** |
 | 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）、业务表 v2/v3 与基础仓储/OperationId/时间切分/日汇总/摘要编码（3B-1～3B-5a）；App：胶囊窗口 + `CapsuleViewModel` + `MonitorSessionService` + 窗口位置/尺寸存储 + 托盘 + 设置窗口；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
 | 未实现 | 统计窗口、右键菜单“流量统计”功能、快照/会话持久化管线（StepBuffer、`StepProduced`、`SessionPersistenceService`、Settlement 入口、Writer 状态机）、启动恢复与一致性修复、开机启动、用户选择目标热点 |
-| 下一次要做的事 | 用户验收 4C-13 的字体统一（重点：标签与数字是否像同一套字形、标签是否仍比数字粗；数字改用雅黑后略宽扁是否可接受）；验收后进入统计窗口开发 |
+| 下一次要做的事 | 用户验收 4C-14 自动适配字号（重点：48 DIP 任务栏下数字是否明显变大、与速度区间距是否仍协调）；注意紧凑/正常密度受列宽限制，长数值渲染尺寸不会同比放大（见 4C-14 限制）；验收后进入统计窗口开发 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -198,6 +198,14 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - 实机标准档：标签 `x=18,y=19.3,54.7×14`，数字 `x=18,y=35.3,183.3×48.7`（`18.26 KB`），间距 2.0 DIP；数字同字号下比 Segoe 更宽、行高更矮。
 - 未验证：雅黑 Bold 在 11 px + 65% 下的观感需人工目检；视觉引擎仍不可用。
 
+### 阶段 4C-14 实际结果（2026-11-13，自动适配字号放大）
+
+- 实现：`CapsuleViewModel.AutoFitTrafficFontScale = 1.18`；`ApplyDensityMetrics` 对流量字号与行高统一乘倍率，普通 `ApplyNormalMetrics` 保持 1.0。最简密度水平内边距 7→5、与速度区间距 6→4，把省下的 6 DIP 让给数字，避免 `Viewbox` 因列宽不足把放大抵消。
+- 修复隐性缺陷：`SetSize` 的提前返回原先只看“密度为 Normal 且尺寸相同”，无法区分自动 Normal 与手动 320×104，关闭自动适配时倍率残留（实测 54.3/1.18）。条件补充 `TrafficFontScale == 1.0` 后恢复 46/1.00。
+- 诊断：`UiDump.DescribeTrafficValue` 输出声明字号、行高、渲染矩形与 `renderScale`；`App.UiSelfTest` 在真实/合成/关闭三处记录 `trafficFont/fontScale`。
+- 验证：`dotnet build` 0/0、`dotnet test` **385/385**；`artifacts/ui-selftest34/selftest.txt`：48 DIP 任务栏 `trafficFont=18.9 fontScale=1.18 renderScale=1.000`、数字 72×22.7、`layout=ok texts=8`；40 DIP 档仍不越界；速度中心差 ≤0.33；关闭后 `trafficFont=46 fontScale=1.00`；四档/自定义字号 31.6/40.3/46/57.5 不变。
+- 限制：紧凑/正常密度下数字列同时受胶囊宽度与速度区挤压，7–8 字符长数值的 `renderScale` 为 0.56–0.83，声明字号变大但渲染尺寸接近原值；只有最简档（48 DIP 任务栏）完整实现 18%。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -295,3 +303,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-13 | 阶段 4C-11：标签与数字合并到同一 StackPanel、共用 TrafficFontFamily、标签 SemiBold 且左边缘严格对齐；UiDump 增加左对齐/字体一致断言；新增 D-080（覆盖 D-079 对齐部分） |
 | 2026-11-13 | 阶段 4C-12：说明标签自身 `Opacity=0.65`（父容器与数字保持 1.0），UiDump 增加透明度隔离断言；对比度实测记录；新增 D-081；提交全部未提交改动 |
 | 2026-11-13 | 阶段 4C-13：标签与数字统一 `Microsoft YaHei UI` + Bold，消除 CJK 逐字符回退与 SemiBold→Bold 错配；UiDump 增加字重/样式/字形覆盖断言；新增 D-082；提交 |
+| 2026-11-13 | 阶段 4C-14：自动适配任务栏时流量数字 ×1.18（最简档收窄水平内边距保证 renderScale=1.0），关闭立即恢复；修复 `SetSize` 倍率残留；UiDump 增加渲染尺寸诊断；新增 D-083；提交 |
