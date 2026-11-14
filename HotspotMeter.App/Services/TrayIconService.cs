@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
 
@@ -17,6 +18,7 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.ToolStripMenuItem _settingsItem;
     private readonly Forms.ToolStripMenuItem _statsItem;
     private readonly Func<bool> _isCapsuleVisible;
+    private readonly TrayMessageWindow _messageWindow;
     private bool _disposed;
 
     public TrayIconService(
@@ -37,7 +39,7 @@ public sealed class TrayIconService : IDisposable
             ShowImageMargin = false,
             ShowCheckMargin = false,
             Padding = new Forms.Padding(4),
-            Font = new Drawing.Font("Segoe UI", 9f),
+            Font = Drawing.SystemFonts.MenuFont,
         };
 
         _statsItem = CreateItem("流量统计", openStats);
@@ -69,6 +71,19 @@ public sealed class TrayIconService : IDisposable
             Visible = true,
             ContextMenuStrip = _menu,
         };
+
+        // Explorer 重启会重建任务栏，WinForms 的 NotifyIcon 不会自动回来。
+        // 监听 TaskbarCreated 后重新挂载，否则胶囊被隐藏时用户会失去唯一入口。
+        _messageWindow = new TrayMessageWindow(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _notifyIcon.Visible = false;
+            _notifyIcon.Visible = true;
+        });
 
         _notifyIcon.MouseDoubleClick += (_, e) =>
         {
@@ -112,6 +127,7 @@ public sealed class TrayIconService : IDisposable
         _disposed = true;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _messageWindow.Dispose();
         _menu.Dispose();
     }
 
@@ -124,7 +140,8 @@ public sealed class TrayIconService : IDisposable
         public static readonly Drawing.Color Border = Drawing.Color.FromArgb(0x3A, 0x3A, 0x3F);
         private static readonly Drawing.Color DisabledText = Drawing.Color.FromArgb(0x6E, 0x6E, 0x73);
 
-        private static readonly Drawing.Font MenuFont = new("Segoe UI", 9f);
+        // 系统字体由 SystemFonts 缓存，不随菜单释放；自建 Font 会泄漏 GDI 句柄。
+        private static readonly Drawing.Font MenuFont = Drawing.SystemFonts.MenuFont!;
 
         protected override void OnRenderToolStripBackground(Forms.ToolStripRenderEventArgs e)
         {
@@ -168,5 +185,52 @@ public sealed class TrayIconService : IDisposable
         {
             // 不显示图标列，避免左侧出现一条空白。
         }
+    }
+
+    /// <summary>
+    /// 只收 TaskbarCreated 的消息窗口。隐藏窗口不参与 UI、不抢焦点；
+    /// 用 HWND_MESSAGE 父窗口可保证它不会出现在 Alt+Tab 或任务栏。
+    /// </summary>
+    private sealed class TrayMessageWindow : Forms.NativeWindow, IDisposable
+    {
+        private const int HwndMessage = -3;
+
+        private readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
+        private readonly Action _onTaskbarCreated;
+        private bool _disposed;
+
+        public TrayMessageWindow(Action onTaskbarCreated)
+        {
+            _onTaskbarCreated = onTaskbarCreated;
+            CreateHandle(new Forms.CreateParams
+            {
+                Caption = "HotspotMeter.TrayMessageWindow",
+                Parent = new IntPtr(HwndMessage),
+            });
+        }
+
+        protected override void WndProc(ref Forms.Message m)
+        {
+            if (_taskbarCreated != 0 && m.Msg == _taskbarCreated)
+            {
+                _onTaskbarCreated();
+            }
+
+            base.WndProc(ref m);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            DestroyHandle();
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern uint RegisterWindowMessage(string lpString);
     }
 }

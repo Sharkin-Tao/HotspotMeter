@@ -245,11 +245,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// 从宿主重新读数。胶囊右键菜单也能改固定状态，窗口激活时必须同步，
     /// 否则设置窗口会显示过期状态。
     /// </summary>
-    public void Refresh()
+    public void Refresh(bool keepSizeInputs = false)
     {
         var size = _host.CurrentSize;
-        WidthText = size.Width.ToString("0.#", CultureInfo.CurrentCulture);
-        HeightText = size.Height.ToString("0.#", CultureInfo.CurrentCulture);
+        if (!keepSizeInputs)
+        {
+            WidthText = size.Width.ToString("0.#", CultureInfo.CurrentCulture);
+            HeightText = size.Height.ToString("0.#", CultureInfo.CurrentCulture);
+        }
+
         CurrentSizeText = $"{size.Width:0.#} × {size.Height:0.#} DIP";
         AspectRatioText = $"宽高比 {size.AspectRatioValue:0.00}";
 

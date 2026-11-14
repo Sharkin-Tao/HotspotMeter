@@ -62,7 +62,8 @@ public sealed class TrafficHistoryStore : IAsyncDisposable
             mappings.CommandText =
                 """
                 UPDATE SessionRunMappings
-                SET MappingStatus = 2,
+                -- 3 = Abandoned：启动清扫不是“正常断开”，保留这一区别供恢复/诊断使用。
+                SET MappingStatus = 3,
                     DetachedAtUtc = (
                         SELECT COALESCE(s.LastPersistedToUtc, s.StartedAtUtc)
                         FROM ConnectionSessions s
@@ -219,7 +220,18 @@ public sealed class TrafficHistoryStore : IAsyncDisposable
                 return;
             }
 
-            var connectedMs = (long)Math.Max(0, (to - session.LastToUtc).TotalMilliseconds);
+            // 睡眠/长时间挂起期间引擎保留会话但不再采样；纯墙钟差会把整段睡眠算成“连接中”。
+            // 正常检查点间隔 10 秒，超过 3 个周期仍未落库，只能视为不可信的连接时长，记 0；
+            // 字节仍按快照增量完整计入，不受影响。
+            var gap = to - session.LastToUtc;
+            var connectedMs = gap > TimeSpan.FromSeconds(30)
+                ? 0
+                : (long)Math.Max(0, gap.TotalMilliseconds);
+            if (!snapshot.IsTargetConnected)
+            {
+                connectedMs = 0;
+            }
+
             var segments = NightlySplitter.Split(
                 session.LastToUtc,
                 to,
@@ -345,7 +357,10 @@ public sealed class TrafficHistoryStore : IAsyncDisposable
             var to = info.EndedAtUtc.ToUniversalTime();
             var downloadDelta = Math.Max(0, info.DownloadBytes - session.PersistedDownload);
             var uploadDelta = Math.Max(0, info.UploadBytes - session.PersistedUpload);
-            var connectedMs = (long)Math.Max(0, (to - session.LastToUtc).TotalMilliseconds);
+            var gap = to - session.LastToUtc;
+            var connectedMs = gap > TimeSpan.FromSeconds(30)
+                ? 0
+                : (long)Math.Max(0, gap.TotalMilliseconds);
             var segments = to > session.LastToUtc
                 ? NightlySplitter.Split(session.LastToUtc, to, _timeZone, downloadDelta, uploadDelta, connectedMs)
                 : [];

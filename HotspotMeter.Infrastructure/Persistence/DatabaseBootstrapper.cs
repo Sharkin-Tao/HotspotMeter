@@ -55,6 +55,13 @@ public sealed class DatabaseBootstrapper
             healthBefore = _health.Check(_paths.DatabaseFile);
             if (!healthBefore.IsHealthy)
             {
+                if (!healthBefore.CanQuarantine)
+                {
+                    // 临时占用/IO/权限问题：保留文件，让上层把“历史不可用”告知用户。
+                    throw new InvalidOperationException(
+                        $"数据库暂时不可用，已保留原文件而未隔离：{healthBefore.Detail}");
+                }
+
                 _logger?.LogError(
                     "数据库健康检查失败，准备隔离：{Detail}",
                     healthBefore.Detail);

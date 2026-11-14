@@ -96,9 +96,30 @@ public sealed class WindowStateStore
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
             _cached = null;
+            // 损坏文件先改名保留，绝不能在下一次 Save 时被默认值静默覆盖。
+            TryBackupBrokenFile(ex);
         }
 
         return _cached;
+    }
+
+    private void TryBackupBrokenFile(Exception error)
+    {
+        try
+        {
+            if (!File.Exists(_path))
+            {
+                return;
+            }
+
+            var backup = $"{_path}.bad-{DateTime.Now:yyyyMMdd-HHmmss}";
+            File.Move(_path, backup);
+            AppLog.Info($"ui-state.json 无法读取，已备份为 {backup}：{error.Message}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Info($"ui-state.json 无法读取且备份失败：{ex.Message}");
+        }
     }
 
     public CapsuleWindowState GetOrCreate() => Load() ?? new CapsuleWindowState();
@@ -124,11 +145,23 @@ public sealed class WindowStateStore
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllText(_path, JsonSerializer.Serialize(state, JsonOptions));
+            // 先写临时文件再替换：撕裂写会留下半截 JSON，下一次读取就被当成“旧文件”，
+            // 用户的尺寸/位置/自动适配设置会静默丢失。
+            var temp = _path + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(state, JsonOptions));
+            if (File.Exists(_path))
+            {
+                File.Replace(temp, _path, null);
+            }
+            else
+            {
+                File.Move(temp, _path);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 位置/尺寸记忆不是核心功能，失败时保持当前会话内的布局即可。
+            AppLog.Info($"ui-state.json 保存失败：{ex.Message}");
         }
     }
 }

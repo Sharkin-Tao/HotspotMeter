@@ -18,6 +18,9 @@ public partial class StatsWindow : Window
         _viewModel = viewModel;
         DataContext = viewModel;
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
+
+        // 关闭窗口时取消仍在进行的查询，避免旧结果回到已关闭的 ViewModel。
+        Closed += (_, _) => _viewModel.Cancel();
         Loaded += OnLoaded;
     }
 

@@ -178,3 +178,9 @@ SELECT COUNT(*) FROM ConnectionSessions WHERE DownloadBytes < 0 OR UploadBytes <
 - 断电最多丢失一个检查点周期（约 10 秒）的数据。
 - 30 天前的原始快照若被裁剪，只能按会话比例估算跨日归属。
 - 用户手动修改数据库文件可能破坏一致性，程序会尝试提示而不是静默修复。
+## 11. 阶段 6 恢复路径调整（2026-11-14）
+
+- 启动清扫遗留 `SessionStatus=0` 会话时，`SessionRunMappings.MappingStatus` 写 **3（Abandoned）**，不再写 2（正常关闭）；`EndedAtUtc` 取 `COALESCE(LastPersistedToUtc, StartedAtUtc)`，`EndReason=5`、`ResumeOutcome=4`，不把空档字节补入会话。
+- 检查点先提交事务、再推进内存基线；写库失败时保留旧基线，下一周期重算，靠 `OperationId` 唯一约束防重复。
+- `synchronous` 由 `NORMAL` 改为 `FULL`，使“断电最多丢最后一个未提交检查点”与实际落盘行为一致；仍不承诺绝对零丢失。
+- 连接时长：快照间隔 >30 s 或目标未连接时该段记 0，避免把睡眠时间算进每日连接时长；字节增量仍完整保留（除非间隔 >3 s 被判定睡眠，见 05 §15）。

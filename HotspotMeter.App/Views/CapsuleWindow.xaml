@@ -46,7 +46,7 @@
                 <Style TargetType="MenuItem" BasedOn="{StaticResource CapsuleMenuItemStyle}" />
                 <Style TargetType="Separator" BasedOn="{StaticResource CapsuleMenuSeparatorStyle}" />
             </ContextMenu.Resources>
-            <MenuItem Header="流量统计" IsEnabled="False" ToolTip="阶段 5 实现" />
+            <MenuItem Header="流量统计" Click="OnOpenStats" />
             <Separator />
             <MenuItem Header="{Binding PinMenuText}" Click="OnTogglePin" />
             <MenuItem Header="调整大小…" Click="OnOpenSizeSettings" />

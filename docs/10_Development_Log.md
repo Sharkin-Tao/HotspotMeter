@@ -1079,3 +1079,21 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
   Z 序/像素证据 `artifacts/shell-zorder-watcher2.log`（关闭开始菜单后 green 0→11,309，点任务栏空白 11,267）。
 - 限制：开始菜单/搜索展开期间受 band 6 限制，不能保证覆盖；UAC/锁屏不承诺；任务栏仅显示/隐藏无前台变化时不触发。
 - 文档：D-090～D-092、docs/02 §2.6、docs/03、docs/05 §14、docs/07 5.1 验收、PROJECT_CONTEXT。
+
+## 2026-11-14 阶段 6：发布前全面审查与加固
+
+- 基线 `main@2498c4a`，工作区干净；4 个只读子代理审查 App 生命周期、持久化、监控、统计 UI。
+- 修复 P0：退出时 `DisposeAsync` 在 UI 线程同步等待自身续体导致固定 3 秒冻结；改为线程池执行 + 3 秒上限，服务内部 `ConfigureAwait(false)`、先排空历史队列再关写入器。
+- 修复统计串热点：`TrafficStatsService` 的每日/区间查询补 `ProfileKey` 过滤；无目标时返回完整日期轴且标记无记录。
+- 修复统计并发：`StatsViewModel` 版本守卫 + 关闭时 `Cancel()` + WinRT 令牌透传；旧查询不再清空新列表。
+- 修复逐程序配置匹配：`AttributedUsageReader.FindProfile` 要求 adapter GUID 与 SSID 都精确匹配，缺失返回不可用。
+- 修复持久化：遗留会话映射改 `MappingStatus=3`；连接时长在 >30 s 间隔/未连接时记 0；检查点事务成功后才推进基线；自检确认 14 秒内 5 个检查点、正常退出无 Active 会话。
+- 修复数据库健康：BUSY/LOCKED/IOERR 不隔离，CANTOPEN 仍尝试隔离；`DatabaseBootstrapper` 在不可隔离时抛异常保留原文件；`synchronous=FULL`，连接工厂测试更新。
+- 修复配置与设置：`ui-state.json` 原子写 + 损坏备份；设置窗口按工作区夹取、激活时不覆盖正在编辑的宽高；自启失败原因显示在设置页。
+- 修复托盘：菜单字体不再泄漏 GDI；新增 `TaskbarCreated` 消息窗口重新挂载图标（未人工重启 Explorer 验证）。
+- 修复热点晚到：无候选时 5 秒重试；启动失败清理半初始化引擎，避免重试被挡。
+- 修复胶囊菜单：右键“流量统计”启用，调用 `OpenStats` 单实例。
+- 运行时事故与修复：`CloseAbandonedSessionsAsync` SQL 内误写 `//` 注释，SQLite 报 `near "/": syntax error`，历史库每次启动初始化失败；改为 `--` 后恢复（D-099）。
+- 验证：Debug/Release 构建 0 警告 0 错误；`dotnet test` Debug/Release 均 **390/390**；`HOTSPOTMETER_STAGE5_TEST` 自检 startup/taskbar/topmost/stats/monitor 全通过，退出 7.4 s 无超时；统计窗口 `layout=ok texts=44`，截图 `artifacts/stage6-stats.png`（1470×1050），标题栏 `rgb(11,11,12)`。
+- 新增决策 D-093～D-099；更新 PROJECT_CONTEXT、docs/02/03/04/05/07/08/09。
+- 已知未解决：WLAN 句柄永久错误不自动重开；>3 s 采样间隔仍按睡眠丢字节；无睡前检查点；`Local\` 单实例与 RunId 清扫；Alt+F4 关闭胶囊后重开风险；Explorer 重启托盘恢复未人工验证；未做 24 h 长跑与多 DPI 实机。

@@ -1,4 +1,4 @@
-# PROJECT_CONTEXT.md — HotspotMeter 知识库入口
+﻿# PROJECT_CONTEXT.md — HotspotMeter 知识库入口
 
 > 每次开始任务先读本文件，再按任务读取对应文档。
 > 本文件只做导航、状态与"事实/假设"清单，详细内容在 `docs/` 下。
@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 5 已完成，5.1 遮挡缺陷（开始菜单/任务栏点击）与统计窗口深色标题栏已修复，等待用户验收** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe 均不入解决方案 |
-| 未实现 | 统计窗口的周/月汇总（当前为今日/最近 7 天/单日）、程序图标提取（当前仅名称）、逐应用历史数据持久化（当前按查询日实时读 Windows API）、用户手动选择目标热点的 UI、睡眠/唤醒专项恢复编排 |
-| 下一次要做的事 | 用户验收 5.1 修复：①点任务栏图标/空白后胶囊是否恢复可见；②Win 开始菜单关闭后胶囊是否自动恢复（展开期间被系统 band 6 覆盖属已知限制）；③统计窗口标题栏是否为深色且按钮/拖动正常；④确认后再决定阶段 6 |
+| 当前阶段 | **阶段 6 已完成：发布前全面审查、低风险修复、Release 验证与交接准备，等待用户验收** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置；阶段 6 修复见下方“阶段 6 实际结果”；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe、ShellZOrderProbe 均不入解决方案 |
+| 未实现 | 周/月汇总（当前今日/最近 7 天/单日）、程序图标提取、逐应用历史数据持久化（按查询日实时读 Windows API）、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装包与发布流程（阶段 7） |
+| 下一次要做的事 | 用户验收 Debug 程序：①胶囊/统计窗口/托盘/设置正常；②统计窗口只汇总目标热点；③退出不再固定卡 3 秒；④托盘在 Explorer 重启后能恢复（需人工）；⑤查看统计窗口深色标题栏。确认后进入阶段 7 打包与发布准备 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -43,7 +43,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 - 新增 `HotspotMeter.Infrastructure/Persistence/`：`DatabasePaths`、`SqliteConnectionFactory`、`SchemaMigrator`、`DatabaseHealth`、`DatabaseQuarantine`、`DatabaseBootstrapper`、`IDatabaseWriter`、`SqliteWriter`；`SingleInstance/SingleInstanceGuard`。
 - Schema v1 只有 `SchemaInfo(Key, Value)`（`created_at_utc`/`initialized_at_utc`/`app_version`）；版本唯一权威是 `PRAGMA user_version`，高版本库拒绝写入。
-- 连接：`Pooling=false`；每连接 `foreign_keys=ON`、`busy_timeout=5000`、`synchronous=NORMAL`，并校验 `journal_mode=wal`。
+- 连接：`Pooling=false`；每连接 `foreign_keys=ON`、`busy_timeout=5000`、`synchronous=NORMAL`（阶段 6 已改为 `FULL`），并校验 `journal_mode=wal`。
 - 损坏处理：`quick_check` 失败 → 把 db/-wal/-shm/-journal 整体移入 `corrupt-{时间戳}`；隔离失败则抛异常且不创建新库。
 - Writer：单消费者 FIFO、每项独立事务、`StopAsync` 排空后释放连接；**未**实现优先级/多队列/业务命令。
 - 测试新增 43 例（58 → 101），解决方案与 MonitorHost 均 0 警告 0 错误。
@@ -217,6 +217,23 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **限制**：置顶无法绝对覆盖 UAC/安全桌面等系统界面；开始菜单/搜索展开期间 Shell 处于更高窗口 band（诊断读数 6），普通 `HWND_TOPMOST` 无法覆盖，关闭后才恢复；任务栏仅“显示/隐藏”而无前台变化时不会触发重断言；Windows 归属 API 有延迟且桌面程序 `AttributionName` 为空；逐程序数据未入库（每次按日期查询）；程序图标暂未提取；统计窗口周/月汇总未实现；未做 24 h 长跑与真实 Explorer 重启的人工验收。
 - **5.1 附加 UI（统计窗口标题栏）**：`StatsWindow` 在 `SourceInitialized` 调用现有 `DarkTitleBar.Apply`，标题栏 `#0B0B0C`、边框 `#26262A`、标题 `#F5F5F7`；实机屏幕采样（物理 1470×100）主色 `rgb(11,11,12)`，亮色文字/按钮像素 877；未改窗口尺寸、布局与三个系统按钮行为。
 
+### 阶段 6 实际结果（2026-11-14，发布前审查与加固）
+
+- **审查方式**：4 个只读子代理分别审查 App 生命周期/资源、持久化/数据、监控/Win32、统计 UI/测试；主代理逐项复核并只实施低风险修复，不改 Schema、不清数据、不改默认行为。
+- **P0 修复**：退出路径 `App.xaml.cs` 原在 UI 线程同步 Wait，`MonitorSessionService.DisposeAsync` 的续体又要求 UI 线程 → 固定卡 3 秒且释放不完整。改为 `Task.Run(...DisposeAsync()).Wait(3s)`，`DisposeAsync` 内全部 `ConfigureAwait(false)`、无条件释放历史写入器；运行时自检 7.4 s 内正常退出，`app.log` 无“退出时监控释放超时”。
+- **数据正确性修复**：
+  - 统计查询原 `SUM(DailyTraffic)` 未按 `ProfileKey` 过滤，会把用户连过的所有热点混加。现在 `TrafficStatsService.GetDailyAsync/GetDayAsync/GetLastSevenDaysAsync` 都按当前目标热点的 `ProfileKey` 过滤；无目标/无库时返回完整日期轴并标注无数据。
+  - 逐程序 `FindProfile` 改为 adapter GUID 与 SSID 都非空且精确匹配，缺一返回不可用，避免取“列表第一个配置”张冠李戴。
+  - `TrafficHistoryStore` 启动清扫把遗留 Active 会话的映射标为 `MappingStatus=3`（Abandoned），不再冒充正常断开；连接时长在快照间隔 >30 s 或目标未连接时记 0，避免睡眠被算成 3 小时连接；字节仍按增量完整计入。
+- **数据库健康**：`DatabaseHealth` 区分可隔离与暂时占用；BUSY/LOCKED(5/6) 与 IOERR(10) 不再隔离，CANTOPEN(14) 仍尝试隔离（文件真被占用时 Move 会失败并抛 `DatabaseQuarantineException`，不会静默清空）；`DatabaseBootstrapper` 在不可隔离时抛异常保留原文件；结果带 `CanQuarantine`，`TrafficHistoryStore` 写日志。
+- **持久性**：`SqliteConnectionFactory` 改 `synchronous=FULL`，与“断电最多丢最后一个检查点”的口径一致；连接工厂测试同步更新。
+- **统计窗口并发**：`StatsViewModel` 所有可见写入加版本守卫，旧查询不能覆盖新结果；`StatsWindow` 关闭时 `Cancel()` 取消在途加载；WinRT 查询透传 `CancellationToken`；程序列表说明“仅 N/7 天有归属数据、占比不可跨日比较”。
+- **UI/交互**：胶囊右键“流量统计”从禁用改为真正打开单实例统计窗；设置窗口按工作区夹取尺寸、激活时若正在编辑宽高则不覆盖输入；`ui-state.json` 改临时文件 + `File.Replace` 原子写，损坏文件改名 `.bad-*` 并记日志；托盘菜单字体改用系统字体（不再泄漏 GDI 对象），并用 `HWND_MESSAGE` 监听 `TaskbarCreated` 重新挂载图标。
+- **启动/重连**：目标热点未识别时每 5 秒重试（仅定时器，非高频轮询），识别成功后停止；启动失败会清理半初始化的引擎，避免重试被 `_engine != null` 永久挡住。
+- **运行时验证**：Debug 启动后 `TrafficSnapshots` 从 314 增至 315、会话字节与 `DailyTraffic` 同步增长；运行 `HOTSPOTMETER_STAGE5_TEST` 正常退出后 `active=[]`（会话已结算），无超时日志。统计窗口 `artifacts/stage6-stats.txt`：`layout=ok texts=44`，截图 1470×1050，标题栏采样 `rgb(11,11,12)`。
+- **构建/测试**：Debug、Release 均 0 警告 0 错误；`dotnet test` **390/390**（Debug 与 Release）。
+- **已知未解决**：WLAN 查询永久失败时不会自动重开句柄（仅目标未识别会重试）；采样间隔 >3 s 仍按睡眠处理，会丢该段字节；`ResumeAsync` 并发边角未覆盖；单实例使用 `Local\` 且清扫不按 RunId 过滤，同用户双会话可能互踩；无 `PowerModeChanged` 睡前检查点；Alt+F4 关闭胶囊后从托盘“显示”可能对已关闭窗口调 `Show()`；Explorer 重启后的托盘恢复只做了代码级实现，尚未人工实测。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -254,6 +271,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 17. 4C-8 实测：本机 150% DPI、底部任务栏厚 48 DIP，自动尺寸为 135.4×44 DIP（最简密度、隐藏速度标签）；任务栏 60/120 DIP 分别得到 192.8×62.7（紧凑）与 320×104（正常）。
 18. 4C-9 实测：本机 150% DPI、任务栏 `0,1528,2560,1600`（48 DIP）时，自动定位结果为 `(120,1020.7)`，胶囊 135.4×44 完整落在任务栏内；垂直方向不能扣 8 DIP 边距，否则会被顶回任务栏上方。
 19. 5.1 实测：任务栏/开始菜单可被 Shell 提升到更高窗口 band（诊断读数：胶囊 1、SearchHost/任务栏 6）；band 6 期间 `SetWindowPos(HWND_TOPMOST)` 返回成功但无法覆盖。band 回落到 1 后，一次重断言即可恢复；前台事件后需延迟约 250 ms，等任务栏完成自身抬升，立即置顶会被覆盖。
+20. 阶段 6 实测：`synchronous=FULL` 下 14 秒内写入 5 个检查点，`DailyTraffic` 与会话字节同步增长；正常退出后无 Active 会话，自检退出耗时 7.4 s（含自检等待），无释放超时日志。
+21. 阶段 6 修复了一个真实运行时缺陷：`CloseAbandonedSessionsAsync` 的 SQL 中误写 C# 注释 `//`，导致每次启动历史库初始化失败（`SQLite Error 1: near "/": syntax error`）；改为 SQL 的 `--` 后恢复。纯构建/单测无法发现，必须启动并查 `app.log`。
+22. 阶段 6 统计口径已验证：统计查询按当前目标热点 `ProfileKey` 过滤；逐程序合计与总量差额只解释为“未归属/系统”，不做分摊。
+23. 阶段 6 Release `dotnet clean/build -c Release` 0 警告 0 错误，`dotnet test -c Release --no-build` 390/390；Debug 同。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -318,3 +339,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-13 | 阶段 4C-14：自动适配任务栏时流量数字 ×1.18（最简档收窄水平内边距保证 renderScale=1.0），关闭立即恢复；修复 `SetSize` 倍率残留；UiDump 增加渲染尺寸诊断；新增 D-083；提交 |
 | 2026-11-14 | 阶段 5：任务栏置顶事件监听、HKCU 开机自启、任务栏显示默认开启、`TrafficHistoryStore` 持久化接入、WinRT 逐程序归属读取、独立统计窗口；390 项测试通过；新增 D-084～D-089；统一提交 |
 | 2026-11-14 | 阶段 5.1 修复：前台监听不再按 Shell 类名过滤，250 ms 后单次重断言；开始菜单展开期间受 band 6 限制、关闭后自动恢复；统计窗口接入 `DarkTitleBar`；390 测试通过；新增 D-090～D-092 |
+| 2026-11-14 | 阶段 6：发布前审查与加固（退出死锁、统计按 ProfileKey 过滤、DB 健康分类、synchronous=FULL、统计竞态取消、托盘 TaskbarCreated、原子配置、设置窗夹取、目标热点重试、SQL 注释运行时缺陷）；Debug/Release 390 测试通过；新增 D-093～D-099 |

@@ -255,12 +255,12 @@ HAVING s.DownloadBytes <> SnapDownload;
 
 ```sql
 PRAGMA journal_mode = WAL;      -- 读写不互相阻塞；断电后由 WAL 恢复
-PRAGMA synchronous = NORMAL;    -- WAL 下的常用折中；进程崩溃安全，突然断电可能丢最后若干事务
+PRAGMA synchronous = FULL;      -- 每个已提交事务落盘；阶段 6 由 NORMAL 调整为 FULL
 PRAGMA foreign_keys = ON;       -- Microsoft.Data.Sqlite 默认关闭，必须显式打开
 PRAGMA busy_timeout = 5000;
 ```
 
-为什么不用 `synchronous=FULL`：热点监控对性能敏感、写入频繁，FULL 会显著增加磁盘同步；NORMAL 配合 WAL 已能保证"进程崩溃不损坏、已提交事务不丢"，代价是**突然断电可能丢失最后几个事务**——这与 06 中"不承诺绝对零丢失"的边界一致。
+阶段 6 起使用 `synchronous=FULL`：热点监控每 10 秒一个检查点，写入频率不高，FULL 的额外 fsync 可以接受；它使"进程崩溃/突然断电最多丢最后一个未提交检查点"的口径更接近真实。代价是每次事务多一次磁盘同步。原先 `NORMAL` 在 WAL 下可能丢掉最后若干已提交事务，与 06 的完整性声明不完全一致，故调整（D-095）。
 
 ## 6. 聚合与重建规则
 
@@ -304,3 +304,13 @@ PRAGMA busy_timeout = 5000;
   `EndedAtUtc=COALESCE(LastPersistedToUtc, StartedAtUtc)`，不补空档字节；对应映射改为 `MappingStatus=2`。
 - 逐程序流量**不入库**：当前每次查询按选定日期实时调用 Windows 归属 API。原因见 D-088；
   因此没有“按应用历史表”，也不存在与总流量重复累计的问题。
+
+## 11. 阶段 6 数据层加固（2026-11-14）
+
+- **未改 Schema**：仍为 `user_version=3`，9 张表与索引均未变更；旧库直接兼容。
+- `synchronous=FULL`（见第 5 节），`journal_mode=WAL`、`foreign_keys=ON`、`busy_timeout=5000` 不变。
+- 启动清扫：`ConnectionSessions.SessionStatus=0` 的遗留会话按最后检查点收尾（`SessionStatus=2`、`EndReason=5`、`ResumeOutcome=4`、`EndedAtUtc=COALESCE(LastPersistedToUtc, StartedAtUtc)`），`SessionRunMappings.MappingStatus=3`（Abandoned），不补空档字节。
+- `DailyTraffic.ConnectedMilliseconds`：快照间隔 >30 s 或目标未连接时该段记 0；睡眠时间不再被算成连接时长。字节增量不受影响。
+- `DailyTraffic.SessionCount` 在会话开始时 +1（跨午夜只记开始日），避免结算时按分段重复。
+- 统计读取按当前目标热点的 `ProfileKey` 过滤 `DailyTraffic`，不会把其他热点历史混入；逐程序数据仍不落库，按查询日实时读 Windows 归属 API。
+- 数据库健康：BUSY/LOCKED(5/6)、IOERR(10) 属于暂时占用，不隔离；CANTOPEN(14) 仍尝试隔离，Move 失败会抛异常而不是清空；只有确定损坏（如 NOTADB/快速检查失败）才整体移入 `corrupt-{timestamp}`。

@@ -24,6 +24,8 @@ public partial class App : Application, ISettingsHost
     private readonly AttributedUsageReader _usageReader = new();
     private TrayIconService? _tray;
     private MonitorSessionService? _monitor;
+    private bool _exiting;
+    private StartupRegistration? _lastStartupWrite;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -59,7 +61,7 @@ public partial class App : Application, ISettingsHost
         _capsuleViewModel = new CapsuleViewModel();
         _capsuleViewModel.SetSize(startSize);
 
-        _capsule = new CapsuleWindow(_stateStore, OpenSettings)
+        _capsule = new CapsuleWindow(_stateStore, OpenSettings, OpenStats)
         {
             DataContext = _capsuleViewModel,
         };
@@ -80,7 +82,21 @@ public partial class App : Application, ISettingsHost
 
         // 监控与窗口可见性解耦：即使启动时不显示胶囊，引擎仍照常采样。
         _monitor = new MonitorSessionService(Dispatcher);
-        await _monitor.InitializeAsync(_capsuleViewModel);
+        try
+        {
+            await _monitor.InitializeAsync(_capsuleViewModel);
+        }
+        catch (Exception ex)
+        {
+            // 监控启动失败不应把整个程序带走：保留胶囊与统计窗口，明确告知采集不可用。
+            AppLog.Info($"监控初始化失败：{ex.Message}");
+            CrashLog.Write(ex, "MonitorInitialize");
+        }
+
+        if (_exiting)
+        {
+            return;
+        }
 
         // 开发期自检入口：默认关闭，只有显式设置环境变量才运行。
         var selfTestPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_TEST");
@@ -180,6 +196,12 @@ public partial class App : Application, ISettingsHost
     {
         get
         {
+            // 写注册表失败时，单纯回读只会显示“未开启”，用户不知道失败原因。
+            if (_lastStartupWrite is { State: StartupRegistrationState.Unknown } failed)
+            {
+                return $"启动项写入失败：{failed.Error}";
+            }
+
             var registration = _startupRegistration.Read();
             return registration.State switch
             {
@@ -198,6 +220,7 @@ public partial class App : Application, ISettingsHost
     public void SetAutoStart(bool enabled)
     {
         var result = enabled ? _startupRegistration.Enable() : _startupRegistration.Disable();
+        _lastStartupWrite = result.State == StartupRegistrationState.Unknown ? result : null;
         AppLog.Info($"开机自启动切换为 {enabled}：state={result.State} command={result.Command} error={result.Error}");
     }
 
@@ -214,6 +237,7 @@ public partial class App : Application, ISettingsHost
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _exiting = true;
         _tray?.Dispose();
         _tray = null;
 
@@ -221,12 +245,17 @@ public partial class App : Application, ISettingsHost
         {
             try
             {
-                // 退出时给引擎最多 3 秒完成最后一次快照与停止，避免无限等待。
-                _monitor.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3));
+                // DisposeAsync 的续体需要 UI 线程；OnExit 正在 UI 线程等待。
+                // 在线程池上执行整个释放链，避免 3 秒固定超时与“释放只做了一半”。
+                var dispose = Task.Run(() => _monitor.DisposeAsync().AsTask());
+                if (!dispose.Wait(TimeSpan.FromSeconds(3)))
+                {
+                    AppLog.Info("退出时监控释放超时：最后检查点可能未完成。");
+                }
             }
-            catch (AggregateException)
+            catch (Exception ex)
             {
-                // 退出阶段的异常不再影响用户体验。
+                AppLog.Info($"退出时监控释放失败：{ex.Message}");
             }
 
             _monitor = null;

@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
 
@@ -26,6 +28,7 @@ public partial class SettingsWindow : Window
         SourceInitialized += (_, _) =>
         {
             DarkTitleBar.Apply(this);
+            ClampWindowSize();
             RestorePosition();
         };
         Closed += (_, _) => PersistPosition();
@@ -36,7 +39,16 @@ public partial class SettingsWindow : Window
         base.OnActivated(e);
 
         // 胶囊右键菜单也能切换固定状态，激活时刷新，避免显示过期值。
-        _viewModel.Refresh();
+        // 正在输入自定义宽高时不要用当前（旧）尺寸覆盖输入框。
+        _viewModel.Refresh(keepSizeInputs: Keyboard.FocusedElement is TextBox);
+    }
+
+    /// <summary>工作区可能小于设计高度（例如 1080p@175%）；夹住窗口高度，底部按钮才可达。</summary>
+    private void ClampWindowSize()
+    {
+        var area = SystemParameters.WorkArea;
+        Width = Math.Max(480, Math.Min(Width, area.Width - ScreenMargin * 2));
+        Height = Math.Max(360, Math.Min(Height, area.Height - ScreenMargin * 2));
     }
 
     private void RestorePosition()

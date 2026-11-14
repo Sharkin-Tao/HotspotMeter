@@ -25,6 +25,10 @@ public sealed class MonitorSessionService : IAsyncDisposable
     private CapsuleViewModel? _viewModel;
     private Guid _profileKey;
     private bool _historyAvailable;
+    private bool _historyInitialized;
+    private DispatcherTimer? _targetRetryTimer;
+    private bool _targetRetryBusy;
+    private bool _disposed;
 
     /// <summary>当前目标网卡 GUID；未识别时为 null。统计窗口用它选 Windows 连接配置。</summary>
     public Guid? TargetInterfaceGuid { get; private set; }
@@ -52,6 +56,12 @@ public sealed class MonitorSessionService : IAsyncDisposable
     {
         _viewModel = viewModel;
 
+        if (_engine is not null)
+        {
+            StopTargetRetry();
+            return;
+        }
+
         try
         {
             var candidates = await _detector.GetCandidatesAsync(cancellationToken);
@@ -62,20 +72,29 @@ public sealed class MonitorSessionService : IAsyncDisposable
 
             if (candidate is null)
             {
-                viewModel.ShowUnavailable("未检测到已连接的 Wi-Fi。请先连接手机热点，再重新启动程序。");
+                // 开机自启常发生在热点关联之前：不要一判定“没有热点”就永久停摆。
+                // 低频重试只在未识别到目标时运行，识别成功后立即停止。
+                viewModel.ShowUnavailable("等待已连接的 Wi-Fi 热点…（后台每 5 秒重新检测）");
+                StartTargetRetry();
                 return;
             }
 
-            try
+            if (!_historyInitialized)
             {
-                await _history.InitializeAsync(cancellationToken);
-                _historyAvailable = true;
-            }
-            catch (Exception ex)
-            {
-                // 历史库失败不能拖垮实时监控：界面继续显示会话流量，统计窗口随后会报告不可用。
-                _historyAvailable = false;
-                AppLog.Info($"历史库初始化失败：{ex.Message}");
+                try
+                {
+                    await _history.InitializeAsync(cancellationToken);
+                    _historyAvailable = true;
+                    _historyInitialized = true;
+                }
+                catch (Exception ex)
+                {
+                    // 历史库失败不能拖垮实时监控：界面继续显示会话流量，统计窗口随后会报告不可用。
+                    // 本进程内不再反复重建 writer，避免每次热点重试都泄漏一个写入器。
+                    _historyAvailable = false;
+                    _historyInitialized = true;
+                    AppLog.Info($"历史库初始化失败：{ex.Message}");
+                }
             }
 
             var target = new HotspotTarget(
@@ -145,11 +164,70 @@ public sealed class MonitorSessionService : IAsyncDisposable
 
             _engine = engine;
             await engine.StartAsync(cancellationToken);
+            StopTargetRetry();
         }
         catch (Exception ex)
         {
+            // 启动失败时 _engine 已经被赋值（事件已挂接），若不清理，
+            // 重试定时器会被 "engine is not null" 永久挡住。
+            if (_engine is not null)
+            {
+                try
+                {
+                    await _engine.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception disposeEx)
+                {
+                    AppLog.Info($"清理启动失败的监控引擎时出错：{disposeEx.Message}");
+                }
+
+                _engine = null;
+            }
+
             viewModel.ShowUnavailable(ex.Message);
+            StartTargetRetry();
         }
+    }
+
+    private void StartTargetRetry()
+    {
+        if (_disposed || _targetRetryTimer is not null)
+        {
+            return;
+        }
+
+        _targetRetryTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(5),
+        };
+        _targetRetryTimer.Tick += async (_, _) =>
+        {
+            if (_targetRetryBusy || _engine is not null || _viewModel is null)
+            {
+                return;
+            }
+
+            _targetRetryBusy = true;
+            try
+            {
+                await InitializeAsync(_viewModel);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Info($"重新检测热点失败：{ex.Message}");
+            }
+            finally
+            {
+                _targetRetryBusy = false;
+            }
+        };
+        _targetRetryTimer.Start();
+    }
+
+    private void StopTargetRetry()
+    {
+        _targetRetryTimer?.Stop();
+        _targetRetryTimer = null;
     }
 
     /// <summary>
@@ -166,16 +244,33 @@ public sealed class MonitorSessionService : IAsyncDisposable
                 {
                     try
                     {
-                        await work().ConfigureAwait(false);
+                        await ExecuteWithRetryAsync(work, label).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
-                        AppLog.Info($"{label}失败：{ex.Message}");
+                        AppLog.Info($"{label}失败（已重试 3 次）：{ex.Message}");
                     }
                 },
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default).Unwrap();
+        }
+    }
+
+    private static async Task ExecuteWithRetryAsync(Func<Task> work, string label)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await work().ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (attempt < 2)
+            {
+                AppLog.Info($"{label}第 {attempt + 1} 次失败，准备重试：{ex.Message}");
+                await Task.Delay(attempt == 0 ? 200 : 1000).ConfigureAwait(false);
+            }
         }
     }
 
@@ -193,18 +288,21 @@ public sealed class MonitorSessionService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+        StopTargetRetry();
+
         if (_engine is { } engine)
         {
             try
             {
-                await engine.StopAsync();
+                await engine.StopAsync().ConfigureAwait(false);
             }
             catch
             {
                 // 退出路径不再向用户抛异常。
             }
 
-            await engine.DisposeAsync();
+            await engine.DisposeAsync().ConfigureAwait(false);
             _engine = null;
         }
 
@@ -219,17 +317,16 @@ public sealed class MonitorSessionService : IAsyncDisposable
 
         try
         {
-            await tail;
+            await tail.ConfigureAwait(false);
         }
         catch
         {
             // 队列内部已记录失败，退出路径不再抛出。
         }
 
-        if (_historyAvailable)
-        {
-            await _history.DisposeAsync();
-            _historyAvailable = false;
-        }
+        // 无条件释放：初始化可能在创建 writer 之后失败（_historyAvailable=false），
+        // 此时仍持有 WAL 连接与后台写入循环，不能因为标志位假而泄漏。
+        await _history.DisposeAsync().ConfigureAwait(false);
+        _historyAvailable = false;
     }
 }

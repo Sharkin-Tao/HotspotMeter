@@ -16,7 +16,7 @@ public class SqliteConnectionFactoryTests
 
         Assert.Equal(1, ReadInt(connection, "PRAGMA foreign_keys;"));
         Assert.Equal(5_000, ReadInt(connection, "PRAGMA busy_timeout;"));
-        Assert.Equal(1, ReadInt(connection, "PRAGMA synchronous;"));
+        Assert.Equal(2, ReadInt(connection, "PRAGMA synchronous;"));
         Assert.Equal("wal", ReadString(connection, "PRAGMA journal_mode;"));
     }
 

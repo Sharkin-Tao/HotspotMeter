@@ -189,3 +189,13 @@ public interface ISessionRepository
 - `App/ViewModels/StatsViewModel` + `App/Views/StatsWindow`：统计窗口；由 `App.OpenStats()` 单实例管理。
 - 新增依赖边界：App 的 TFM 升为 `net10.0-windows10.0.26100.0` 才能引用 WinRT 网络归属 API；
   Core/Infrastructure/Tests 仍保持 `net10.0`，Core 不出现 Windows 类型。
+
+## 阶段 6 加固（2026-11-14）
+
+- **退出生命周期**：`App.OnExit` 把 `MonitorSessionService.DisposeAsync()` 放到线程池执行，再以 3 秒为上限等待；服务内部 `ConfigureAwait(false)`，先等历史写入任务链排空，再无条件关闭 `SqliteWriter`。避免 UI 线程同步等待自身续体造成固定 3 秒冻结。
+- **统计查询边界**：`TrafficStatsService` 的三类查询都要求当前目标热点的 `ProfileKey`；`JOIN HotspotProfiles` 过滤，不再把历史连接过的其他热点混入。没有目标时返回完整日期轴且 `HasRecord=false`，UI 显示"暂无数据"而不是伪造 0。
+- **统计加载并发**：`StatsViewModel` 用 `_loadVersion` 丢弃过期结果，所有可见字段在版本守卫后写入；窗口关闭时 `_lifetime.Cancel()`，WinRT 调用透传取消令牌。
+- **持久化健康**：`DatabaseHealth` 把 BUSY/LOCKED/IOERR 视为暂时占用（不隔离），`DatabaseBootstrapper` 在不可隔离时抛异常保留原文件；只有确定损坏才整体移入 `corrupt-*`。`SqliteWriter` 仍为单消费者、每项独立事务。
+- **托盘生命周期**：`TrayIconService` 使用 `HWND_MESSAGE` 隐藏窗口监听 `TaskbarCreated`，Explorer 重启后重新设置 `NotifyIcon.Visible`；菜单字体使用 `SystemFonts.MenuFont`，不创建/泄漏 GDI Font。
+- **配置写入**：`WindowStateStore` 先写临时文件再 `File.Replace`；读取失败把原文件改名为 `.bad-*` 并记录日志，避免半写文件被静默当成默认值。
+- **热点重试**：`MonitorSessionService` 在未识别到目标热点时启动 5 秒 `DispatcherTimer` 重试；成功后停止。启动失败会释放半初始化引擎，防止重试被非空引用挡住。

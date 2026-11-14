@@ -67,6 +67,7 @@ public sealed class StatsViewModel : INotifyPropertyChanged
     private readonly TrafficStatsService _statsService;
     private readonly AttributedUsageReader _usageReader;
     private readonly Func<(Guid? AdapterId, string? Ssid)> _targetProvider;
+    private readonly CancellationTokenSource _lifetime = new();
 
     private DateTime? _selectedDate = DateTime.Today;
     private StatsScope _scope = StatsScope.Day;
@@ -74,6 +75,7 @@ public sealed class StatsViewModel : INotifyPropertyChanged
     private string _statusText = "正在读取历史数据…";
     private string _errorText = string.Empty;
     private string _rangeTitle = "今日";
+    private string _targetText = "目标热点未解析";
     private string _totalText = "—";
     private string _downloadText = "—";
     private string _uploadText = "—";
@@ -140,6 +142,13 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         private set => SetField(ref _rangeTitle, value);
     }
 
+    /// <summary>当前统计口径对应的热点；未解析时明确提示，避免把其它热点数据当成目标热点。</summary>
+    public string TargetText
+    {
+        get => _targetText;
+        private set => SetField(ref _targetText, value);
+    }
+
     public string TotalText
     {
         get => _totalText;
@@ -199,31 +208,66 @@ public sealed class StatsViewModel : INotifyPropertyChanged
     public async Task LoadAsync()
     {
         var version = ++_loadVersion;
+        var token = _lifetime.Token;
         IsBusy = true;
         ErrorText = string.Empty;
 
         try
         {
             var today = DateOnly.FromDateTime(DateTime.Today);
-            var seven = await _statsService.GetLastSevenDaysAsync();
+            var (adapterId, ssid) = _targetProvider();
+            var profileKey = adapterId is Guid adapter && !string.IsNullOrWhiteSpace(ssid)
+                ? TrafficHistoryStore.StableProfileKey(adapter, ssid)
+                : (Guid?)null;
+
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            TargetText = profileKey is null
+                ? "目标热点未解析"
+                : $"目标热点：{ssid}";
+            var seven = await _statsService.GetLastSevenDaysAsync(profileKey, token);
             if (version != _loadVersion)
             {
                 return;
             }
 
             BuildBars(seven, today);
-            await LoadSummaryAsync(version);
-            await LoadProgramsAsync(version);
+            if (!await LoadSummaryAsync(version, profileKey, token))
+            {
+                return;
+            }
 
-            StatusText = _statsService.DatabaseExists
+            if (profileKey is null)
+            {
+                ClearPrograms("未连接目标热点，无法确定逐应用统计属于哪张网卡。连接热点后点击刷新。");
+                SetFooter("数据来自本机热点会话检查点；不是运营商计费流量。");
+                return;
+            }
+
+            await LoadProgramsAsync(version, profileKey.Value, adapterId, ssid, token);
+            if (version != _loadVersion)
+            {
+                return;
+            }
+
+            SetFooter(_statsService.DatabaseExists
                 ? "数据来自本机热点会话检查点；不是运营商计费流量。"
-                : "尚未生成历史数据库：连接热点并保持程序运行后会出现记录。";
-            UpdateText = $"更新于 {DateTime.Now:HH:mm:ss}";
+                : "尚未生成历史数据库：连接热点并保持程序运行后会出现记录。");
+        }
+        catch (OperationCanceledException)
+        {
+            // 窗口已关闭：不再写任何界面状态，也不把它当成错误。
         }
         catch (Exception ex)
         {
-            ErrorText = $"历史数据读取失败：{ex.Message}";
-            StatusText = "可点击刷新重试；后台监控不受影响。";
+            if (version == _loadVersion && !token.IsCancellationRequested)
+            {
+                ErrorText = $"历史数据读取失败：{ex.Message}";
+                StatusText = "可点击刷新重试；后台监控不受影响。";
+            }
         }
         finally
         {
@@ -234,9 +278,32 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>窗口关闭时取消进行中的数据库/WinRT 查询，避免 async 状态机继续持有窗口。</summary>
+    public void Cancel()
+    {
+        if (!_lifetime.IsCancellationRequested)
+        {
+            _lifetime.Cancel();
+        }
+    }
+
+    private void SetFooter(string status)
+    {
+        StatusText = status;
+        UpdateText = $"更新于 {DateTime.Now:HH:mm:ss}";
+    }
+
+    private void ClearPrograms(string status)
+    {
+        Programs.Clear();
+        ProgramStatus = status;
+    }
+
     private async Task SelectScopeAsync(StatsScope scope)
     {
         _scope = scope;
+        _selectedDate = DateTime.Today;
+        DateQueryText = DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         await LoadAsync();
     }
 
@@ -262,6 +329,8 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         ErrorText = string.Empty;
         // 直接写字段，避免 SelectedDate setter 再触发一次 LoadAsync（版本号会作废前一次查询）。
         _selectedDate = date.Date;
+        _scope = StatsScope.Day;
+        DateQueryText = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         OnPropertyChanged(nameof(SelectedDate));
         await LoadAsync();
     }
@@ -274,29 +343,34 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         }
 
         _scope = StatsScope.Day;
+        DateQueryText = value.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         await LoadAsync();
     }
 
-    private async Task LoadSummaryAsync(int version)
+    private async Task<bool> LoadSummaryAsync(int version, Guid? profileKey, CancellationToken token)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
         IReadOnlyList<DailyUsage> rows;
+        string title;
         if (_scope == StatsScope.LastSevenDays)
         {
-            rows = await _statsService.GetDailyAsync(today.AddDays(-6), today);
-            RangeTitle = "最近 7 天";
+            rows = await _statsService.GetDailyAsync(today.AddDays(-6), today, profileKey, token);
+            title = "最近 7 天";
         }
         else
         {
             var date = DateOnly.FromDateTime(SelectedDate ?? DateTime.Today);
-            rows = await _statsService.GetDailyAsync(date, date);
-            RangeTitle = date == today ? "今日" : date.ToString("yyyy-MM-dd", Culture);
+            rows = await _statsService.GetDailyAsync(date, date, profileKey, token);
+            title = date == today ? "今日" : date.ToString("yyyy-MM-dd", Culture);
         }
 
-        if (version != _loadVersion)
+        // 版本检查必须挡在所有可见状态赋值之前：否则旧查询会覆盖新查询的标题与数字。
+        if (version != _loadVersion || token.IsCancellationRequested)
         {
-            return;
+            return false;
         }
+
+        RangeTitle = title;
 
         var recorded = rows.Where(r => r.HasRecord).ToArray();
         if (recorded.Length == 0)
@@ -304,7 +378,7 @@ public sealed class StatsViewModel : INotifyPropertyChanged
             TotalText = "无数据";
             DownloadText = "无数据";
             UploadText = "无数据";
-            return;
+            return true;
         }
 
         var download = recorded.Sum(r => r.DownloadBytes);
@@ -312,18 +386,29 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         TotalText = ByteSizeFormatter.Format(download + upload, Culture);
         DownloadText = ByteSizeFormatter.Format(download, Culture);
         UploadText = ByteSizeFormatter.Format(upload, Culture);
+        return true;
     }
 
-    private async Task LoadProgramsAsync(int version)
+    private async Task LoadProgramsAsync(
+        int version,
+        Guid profileKey,
+        Guid? adapterId,
+        string? ssid,
+        CancellationToken token)
     {
-        Programs.Clear();
-        ProgramStatus = "正在读取逐应用数据…";
-
         var today = DateOnly.FromDateTime(DateTime.Today);
         var dates = _scope == StatsScope.LastSevenDays
             ? Enumerable.Range(0, 7).Select(offset => today.AddDays(offset - 6)).ToArray()
             : [DateOnly.FromDateTime(SelectedDate ?? DateTime.Today)];
-        var (adapterId, ssid) = _targetProvider();
+
+        // 先完成所有 await 前的版本检查，再清空旧列表；旧查询不能把新查询的结果清掉。
+        if (version != _loadVersion || token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        Programs.Clear();
+        ProgramStatus = "正在读取逐应用数据…";
 
         // 逐应用 API 按“单日区间”查询；最近 7 天需要逐日取回后按 AttributionId 合并。
         // 不能拿总量减已归属来伪造应用行，差额只作为“未归属”说明。
@@ -335,8 +420,8 @@ public sealed class StatsViewModel : INotifyPropertyChanged
 
         foreach (var date in dates)
         {
-            var result = await _usageReader.ReadAsync(date, adapterId, ssid);
-            if (version != _loadVersion)
+            var result = await _usageReader.ReadAsync(date, adapterId, ssid, token);
+            if (version != _loadVersion || token.IsCancellationRequested)
             {
                 return;
             }
@@ -371,6 +456,11 @@ public sealed class StatsViewModel : INotifyPropertyChanged
             }
         }
 
+        if (version != _loadVersion || token.IsCancellationRequested)
+        {
+            return;
+        }
+
         if (availableDays == 0)
         {
             ProgramStatus = firstFailure ?? "逐应用流量不可用。";
@@ -401,9 +491,12 @@ public sealed class StatsViewModel : INotifyPropertyChanged
             ? "最近 7 天"
             : dates[0].ToString("yyyy-MM-dd", Culture);
         var unattributed = Math.Max(0, totalDownload + totalUpload - listedTotal);
+        var coverage = availableDays < dates.Length
+            ? $"；仅 {availableDays}/{dates.Length} 天有系统归属数据，占比不可跨日比较"
+            : string.Empty;
         ProgramStatus = ordered.Length == 0
             ? $"{scopeLabel}没有可用的逐应用归属记录；系统可能尚未生成统计。"
-            : $"系统归属数据：{ordered.Length} 项（{scopeLabel}）；占比按列表合计；未归属差额 {ByteSizeFormatter.Format(unattributed, Culture)}。";
+            : $"系统归属数据：{ordered.Length} 项（{scopeLabel}）；占比按列表合计；未归属差额 {ByteSizeFormatter.Format(unattributed, Culture)}{coverage}。";
     }
 
     private void BuildBars(IReadOnlyList<DailyUsage> rows, DateOnly today)

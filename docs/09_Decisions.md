@@ -21,3 +21,51 @@
 - 理由：项目已有经设置窗口验证的 DarkTitleBar 实现，复用风险最低；系统按钮的悬停/按下与关闭红色反馈保持原生。
 - 验证：实机截屏（物理 1470×100）标题栏主色 `rgb(11,11,12)`、边框 `rgb(38,38,42)`、亮色像素 877；截图 `docs/images/stage5-stats-dark-titlebar.png`。
 - 限制：Windows 10 1809 以前无沉浸式深色 API，标题栏会保持系统色；本项目目标 Windows 10 1809+，未在旧版本实机验证。
+
+## D-093 退出释放放到线程池并设 3 秒上限
+- 状态：已决定并实现（阶段 6）
+- 问题：`App.OnExit` 在 UI 线程同步 `Wait`，而 `MonitorSessionService.DisposeAsync` 的 `await` 续体默认回到 UI 线程 → 每次退出固定卡 3 秒，且之后的引擎释放、历史写入器关闭不保证执行。
+- 决策：`Task.Run(() => _monitor.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(3))`；服务内部所有 `await` 加 `ConfigureAwait(false)`，并先等历史队列排空、再无条件 `DisposeAsync` 写入器。
+- 理由：不能把 UI 线程的同步等待与需要 UI 线程的续体放在一起；释放必须离开 UI 线程。
+- 代价/边界：3 秒仍可能不够（例如磁盘极慢），超时会记日志但不阻塞退出；最后一次检查点仍可能丢，这是 06 的既有边界。
+- 验证：`HOTSPOTMETER_STAGE5_TEST` 退出 7.4 s（含自检等待），`app.log` 无“退出时监控释放超时”。
+
+## D-094 数据库健康区分“暂时占用”与“确定损坏”
+- 状态：已决定并实现（阶段 6）
+- 问题：原 `DatabaseHealth` 把任何异常都判不健康，`DatabaseBootstrapper` 随即隔离整个库；安全软件短暂锁库即可让历史“清零”。
+- 决策：`SqliteErrorCode` 5(BUSY)/6(LOCKED)/10(IOERR) 视为暂时占用，重试后仍失败则抛异常、保留原库；14(CANTOPEN) 仍允许尝试隔离（真被占用时 Move 会失败并抛 `DatabaseQuarantineException`）；只有 `NOTADB`/快速检查失败等确定损坏才整体移入 `corrupt-*`。
+- 理由：隔离是破坏性动作，必须只对“确定坏且能移动”的库执行；暂时占用时保留文件让用户重试，比自动清空安全。
+- 代价：数据库真损坏但处于占用状态时，用户需要关闭占用程序后重启应用才能完成隔离。
+- 验证：`DatabaseBootstrapperTests.Initialize_DoesNotCreateNewDatabase_WhenQuarantineFails` 仍通过；390 项测试全绿。
+
+## D-095 SQLite `synchronous` 改为 FULL
+- 状态：已决定并实现（阶段 6）
+- 背景：文档承诺“突然断电最多丢最后一个未提交检查点”，但 `NORMAL` 在 WAL 下可能丢失最后若干已提交事务。
+- 决策：连接工厂统一 `PRAGMA synchronous=FULL`；每 10 秒一个检查点，额外 fsync 可接受。
+- 代价：写入延迟略增；未做吞吐基准，不能宣称“性能不变”。对 1 Hz 采样 + 10 s 落库的负载，预计影响很小但未量化。
+- 验证：运行时 14 秒写入 5 个检查点，日汇总与会话字节同步；390 测试通过（连接工厂断言改为 2=FULL）。
+
+## D-096 统计按目标热点 `ProfileKey` 过滤，不跨热点求和
+- 状态：已决定并实现（阶段 6）
+- 问题：`TrafficStatsService` 的 `SUM(DailyTraffic)` 未带 `ProfileId` 条件，统计窗口会把用户连接过的所有热点历史混加，违反“只统计目标网卡”。
+- 决策：`GetDailyAsync/GetDayAsync/GetLastSevenDaysAsync` 均接收 `Guid? profileKey`，SQL `JOIN HotspotProfiles p ON p.ProfileId=DailyTraffic.ProfileId WHERE p.ProfileKey=$key`；无目标/无库返回完整日期轴并 `HasRecord=false`。
+- 理由：ProfileKey = 接口 GUID + SSID 的稳定派生值，跨重启不变；按它过滤才能既连续又不串热点。
+- 边界：用户切换热点后，统计窗口只显示新热点数据；旧热点历史仍在库中，但当前 UI 不提供跨热点汇总。
+
+## D-097 托盘用 `TaskbarCreated` 消息窗口恢复图标
+- 状态：已决定并实现（阶段 6，待人工验证）
+- 问题：Explorer 重启后 WinForms `NotifyIcon` 不会自动重新挂载；若胶囊被隐藏，用户失去唯一入口。
+- 决策：`TrayIconService` 创建 `HWND_MESSAGE` 隐藏窗口，`RegisterWindowMessage("TaskbarCreated")` 后 `Visible=false→true` 重新挂载；不轮询、不注入 Explorer。
+- 边界：只处理任务栏重建； Explorer 崩溃后托盘宿主的行为仍需人工验证。
+
+## D-098 目标热点未识别时 5 秒重试
+- 状态：已决定并实现（阶段 6）
+- 问题：开机自启常早于 Wi-Fi 关联，原实现只在启动时解析一次目标，之后整程 0 字节，只能重启。
+- 决策：`MonitorSessionService` 在无候选时启动 5 秒 `DispatcherTimer`，识别成功后停止；启动失败释放半初始化引擎再重试。
+- 边界：只解决“启动时没有热点”；WLAN 句柄进入永久错误仍不会自动重开（见 05 §15）。
+
+## D-099 阶段 6 不改 Schema，修复运行时 SQL 注释缺陷
+- 状态：已决定并实现（阶段 6）
+- 决策：不新增表/列/索引，保持 `user_version=3`；所有修复限于查询、事务、生命周期与 UI。
+- 事故：`CloseAbandonedSessionsAsync` 的 SQL 中原写成 C# 的 `// 3 = Abandoned...`，SQLite 报 `near "/": syntax error`，导致每次启动历史库初始化失败；改为 SQL 的 `--` 后恢复。
+- 教训：SQL 字符串内的注释必须用 `--`；构建与单测不执行该语句，必须有“启动 + 查 app.log + 查库”的运行时验收。

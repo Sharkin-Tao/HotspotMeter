@@ -64,7 +64,7 @@ public sealed class AttributedUsageReader
             };
 
             var total = await profile.GetNetworkUsageAsync(
-                start, end, DataUsageGranularity.PerDay, states);
+                start, end, DataUsageGranularity.PerDay, states).AsTask(cancellationToken);
             long totalDown = 0;
             long totalUp = 0;
             foreach (var item in total)
@@ -73,7 +73,8 @@ public sealed class AttributedUsageReader
                 totalUp += (long)item.BytesSent;
             }
 
-            var attributed = await profile.GetAttributedNetworkUsageAsync(start, end, states);
+            var attributed = await profile.GetAttributedNetworkUsageAsync(start, end, states)
+                .AsTask(cancellationToken);
             var programs = attributed
                 .Select(item => new ProgramUsage(
                     item.AttributionId ?? string.Empty,
@@ -98,6 +99,13 @@ public sealed class AttributedUsageReader
 
     private static ConnectionProfile? FindProfile(Guid? adapterId, string? ssid)
     {
+        // 目标身份不完整时宁可返回“不可用”，也不能取第一个 WLAN 配置：
+        // 那会把另一张网卡/另一个热点的归属数据冒充成当前目标。
+        if (adapterId is null || string.IsNullOrWhiteSpace(ssid))
+        {
+            return null;
+        }
+
         foreach (var profile in NetworkInformation.GetConnectionProfiles())
         {
             if (!profile.IsWlanConnectionProfile)
@@ -106,18 +114,13 @@ public sealed class AttributedUsageReader
             }
 
             var profileSsid = profile.WlanConnectionProfileDetails?.GetConnectedSsid();
-            if (string.IsNullOrEmpty(profileSsid))
+            if (string.IsNullOrEmpty(profileSsid) ||
+                !string.Equals(profileSsid, ssid, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(ssid) && !string.Equals(profileSsid, ssid, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (adapterId is { } id && profile.NetworkAdapter is { } adapter &&
-                adapter.NetworkAdapterId != id)
+            if (profile.NetworkAdapter is not { } adapter || adapter.NetworkAdapterId != adapterId.Value)
             {
                 continue;
             }

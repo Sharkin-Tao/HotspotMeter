@@ -34,16 +34,21 @@ public sealed class TrafficStatsService
 
     public bool DatabaseExists => File.Exists(_databasePath);
 
-    /// <summary>按本地自然日读取区间；缺失日期保留 HasRecord=false。</summary>
+    /// <summary>
+    /// 按本地自然日读取区间；缺失日期保留 HasRecord=false。
+    /// profileKey 必须指向当前目标热点：不同 SSID/网卡的 ProfileId 不同，
+    /// 若不带该条件求和，会把用户连过的所有热点混在一起，违反“只统计目标网卡”的口径。
+    /// </summary>
     public async Task<IReadOnlyList<DailyUsage>> GetDailyAsync(
         DateOnly from,
         DateOnly to,
+        Guid? profileKey = null,
         CancellationToken cancellationToken = default)
     {
         var rows = new Dictionary<DateOnly, (long Down, long Up, long Count, long Ms)>();
-        if (!DatabaseExists)
+        if (!DatabaseExists || profileKey is null)
         {
-            return [];
+            return BuildMissingDays(from, to);
         }
 
         await using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
@@ -51,11 +56,14 @@ public sealed class TrafficStatsService
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT LocalDate, SUM(DownloadBytes), SUM(UploadBytes), SUM(SessionCount), SUM(ConnectedMilliseconds)
-            FROM DailyTraffic
-            WHERE LocalDate >= $from AND LocalDate <= $to
-            GROUP BY LocalDate;
+            SELECT d.LocalDate, SUM(d.DownloadBytes), SUM(d.UploadBytes),
+                   SUM(d.SessionCount), SUM(d.ConnectedMilliseconds)
+            FROM DailyTraffic d
+            JOIN HotspotProfiles p ON p.ProfileId = d.ProfileId
+            WHERE p.ProfileKey = $key AND d.LocalDate >= $from AND d.LocalDate <= $to
+            GROUP BY d.LocalDate;
             """;
+        command.Parameters.AddWithValue("$key", profileKey.Value.ToString("N", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$to", to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
 
@@ -87,16 +95,33 @@ public sealed class TrafficStatsService
         return result;
     }
 
-    public async Task<DailyUsage> GetDayAsync(DateOnly date, CancellationToken cancellationToken = default)
+    /// <summary>没有数据库或目标热点未知时，仍返回完整日期轴，界面用“无数据”而不是空白卡片。</summary>
+    private static IReadOnlyList<DailyUsage> BuildMissingDays(DateOnly from, DateOnly to)
     {
-        var rows = await GetDailyAsync(date, date, cancellationToken);
+        var result = new List<DailyUsage>();
+        for (var date = from; date <= to; date = date.AddDays(1))
+        {
+            result.Add(new DailyUsage(date, 0, 0, 0, 0, false));
+        }
+
+        return result;
+    }
+
+    public async Task<DailyUsage> GetDayAsync(
+        DateOnly date,
+        Guid? profileKey = null,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await GetDailyAsync(date, date, profileKey, cancellationToken);
         return rows.Count == 0 ? new DailyUsage(date, 0, 0, 0, 0, false) : rows[0];
     }
 
     /// <summary>最近连续 7 天（含今天），按时间升序。</summary>
-    public Task<IReadOnlyList<DailyUsage>> GetLastSevenDaysAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<DailyUsage>> GetLastSevenDaysAsync(
+        Guid? profileKey = null,
+        CancellationToken cancellationToken = default)
     {
         var today = DateOnly.FromDateTime(DateTime.Now);
-        return GetDailyAsync(today.AddDays(-6), today, cancellationToken);
+        return GetDailyAsync(today.AddDays(-6), today, profileKey, cancellationToken);
     }
 }

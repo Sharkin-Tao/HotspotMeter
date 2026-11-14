@@ -2,8 +2,16 @@ using Microsoft.Data.Sqlite;
 
 namespace HotspotMeter.Infrastructure.Persistence;
 
-/// <summary>健康检查结果。<see cref="Detail"/> 会写入日志，便于事后定位。</summary>
-public sealed record DatabaseHealthResult(bool IsHealthy, string Detail, int? SqliteErrorCode = null);
+/// <summary>
+/// 健康检查结果。<see cref="Detail"/> 会写入日志，便于事后定位。
+/// <see cref="CanQuarantine"/> 只在"确定文件损坏"时为 true：临时占用/权限/IO 错误
+/// 绝不能触发隔离，否则一次安全软件扫描就会让用户历史统计静默清零。
+/// </summary>
+public sealed record DatabaseHealthResult(
+    bool IsHealthy,
+    string Detail,
+    int? SqliteErrorCode = null,
+    bool CanQuarantine = false);
 
 /// <summary>
 /// 数据库健康检查。
@@ -29,6 +37,25 @@ public sealed class DatabaseHealth
             return new DatabaseHealthResult(true, "数据库文件尚不存在，将创建新库。");
         }
 
+        // BUSY/LOCKED 常见于启动瞬间（安全软件扫描、备份工具持有句柄）。
+        // 短暂退避比直接判损坏或直接放弃更符合真实桌面环境。
+        DatabaseHealthResult result = null!;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            result = CheckOnce(databasePath);
+            if (result.IsHealthy || result.SqliteErrorCode is not (5 or 6))
+            {
+                return result;
+            }
+
+            Thread.Sleep(attempt == 0 ? 200 : 500);
+        }
+
+        return result;
+    }
+
+    private static DatabaseHealthResult CheckOnce(string databasePath)
+    {
         try
         {
             var factory = new SqliteConnectionFactory(databasePath);
@@ -53,14 +80,20 @@ public sealed class DatabaseHealth
 
             return new DatabaseHealthResult(
                 false,
-                "quick_check 返回异常结果：" + string.Join(" | ", messages.Take(5)));
+                "quick_check 返回异常结果：" + string.Join(" | ", messages.Take(5)),
+                CanQuarantine: true);
         }
         catch (SqliteException exception)
         {
+            // 5=BUSY、6=LOCKED、10=IOERR：多数是暂时占用/瞬时 IO，必须保留文件。
+            // 14=CANTOPEN 仍允许尝试隔离：真正被占用的文件 Move 也会失败，
+            // 不会出现“临时占用却被静默移走”的结果。
+            var transient = exception.SqliteErrorCode is 5 or 6 or 10;
             return new DatabaseHealthResult(
                 false,
                 $"SQLite 错误 {exception.SqliteErrorCode}（扩展码 {exception.SqliteExtendedErrorCode}）：{exception.Message}",
-                exception.SqliteErrorCode);
+                exception.SqliteErrorCode,
+                CanQuarantine: !transient);
         }
         catch (Exception exception)
         {

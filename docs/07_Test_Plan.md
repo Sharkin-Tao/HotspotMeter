@@ -159,3 +159,32 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 - 开始菜单展开期间的遮挡是 Windows 11 Shell band 行为，不是代码可修复项；只能保证关闭后恢复。
 - 任务栏自动隐藏/恢复若没有前台变化，不会触发重断言；本轮未单独验收。
 - Explorer 重启、注销/登录、UAC/锁屏覆盖未做本轮人工验收。
+
+## 阶段 6 验收记录（2026-11-14）
+
+### 自动化与构建
+
+| 命令 | 结果 |
+| --- | --- |
+| `dotnet build HotspotMeter.sln -c Debug` | 0 警告 / 0 错误 |
+| `dotnet test HotspotMeter.sln -c Debug` | 390 通过 / 0 失败 / 0 跳过 |
+| `dotnet clean HotspotMeter.sln -c Release` | 成功（先关闭运行中的 App，否则 MSB3061 锁文件） |
+| `dotnet build HotspotMeter.sln -c Release` | 0 警告 / 0 错误 |
+| `dotnet test HotspotMeter.sln -c Release --no-build` | 390 通过 / 0 失败 / 0 跳过 |
+
+### 运行时自检
+
+- `HOTSPOTMETER_STAGE5_TEST=<file>`：开机自启读写/恢复、ShowInTaskbar 即时生效、前台 watcher 开关、统计窗口单实例、关闭统计窗后采样继续，全部通过；进程正常退出（约 7.4 s，含自检等待），`app.log` 无“退出时监控释放超时”。
+- 运行 14 s 后查库：`TrafficSnapshots` 314→315、`ConnectionSessions` 与会话字节同步增长、`DailyTraffic` 同步；正常退出后 `SessionStatus=0` 的行为 0 条，说明结算落库。
+- `HOTSPOTMETER_UI_STATS` + `HOTSPOTMETER_UI_STATS_PNG`：统计窗口 `layout=ok texts=44`，截图 1470×1050；标题栏像素 `rgb(11,11,12)`，深色生效。
+- 运行时发现并修复：`CloseAbandonedSessionsAsync` 的 SQL 内误用 `//` 注释，导致历史库每次启动初始化失败；改为 `--` 后恢复。该缺陷无法由构建/单测发现，已记入 D-099。
+
+### 仍需人工验收
+
+1. 真实鼠标拖拽胶囊、固定/解除固定、四档尺寸与自定义。
+2. 按 Win 打开/关闭开始菜单、点击任务栏图标/空白时胶囊可见性（展开期间 band 6 属已知限制）。
+3. Explorer 重启后托盘图标是否恢复（代码已监听 `TaskbarCreated`，未人工重启验证）。
+4. 睡眠/唤醒、合盖 30 分钟、跨午夜；长间隔 >3 s 的字节丢失仍属已知限制。
+5. 多显示器混合 DPI、任务栏换边/自动隐藏。
+6. Alt+F4 关闭胶囊后再从托盘“显示”是否崩溃（已知风险，未修）。
+7. 24 小时以上常驻的内存/句柄/日志增长。

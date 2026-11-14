@@ -96,7 +96,9 @@ public sealed class SqliteConnectionFactory
     {
         Execute(connection, "PRAGMA foreign_keys = ON;");
         Execute(connection, $"PRAGMA busy_timeout = {_busyTimeoutMilliseconds};");
-        Execute(connection, "PRAGMA synchronous = NORMAL;");
+        // FULL：每次提交都 fsync。检查点约 10 秒一次，开销可忽略；
+// NORMAL 在 WAL 下断电可能丢掉整个 WAL（不只是最后 10 秒），与数据恢复文档承诺不符。
+        Execute(connection, "PRAGMA synchronous = FULL;");
 
         using (var journalCommand = connection.CreateCommand())
         {

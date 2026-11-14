@@ -96,6 +96,8 @@
 
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="{Binding RangeTitle}" Style="{StaticResource StatLabelStyle}" />
+                    <TextBlock Text="{Binding TargetText}" Style="{StaticResource StatLabelStyle}"
+                               FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding TotalText}" Style="{StaticResource StatValueStyle}"
                                FontSize="30" />
                 </StackPanel>

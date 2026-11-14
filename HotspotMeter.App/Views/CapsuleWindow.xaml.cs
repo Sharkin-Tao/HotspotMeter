@@ -33,6 +33,7 @@ public partial class CapsuleWindow : Window
 
     private readonly WindowStateStore _stateStore;
     private readonly Action _openSettings;
+    private readonly Action _openStats;
     private readonly TaskbarDetector _taskbarDetector = new();
     private readonly ShellForegroundWatcher _foregroundWatcher = new();
     private CapsuleViewModel? _viewModel;
@@ -49,10 +50,11 @@ public partial class CapsuleWindow : Window
     private string _pendingForegroundClass = string.Empty;
     private int _foregroundLogCount;
 
-    public CapsuleWindow(WindowStateStore stateStore, Action openSettings)
+    public CapsuleWindow(WindowStateStore stateStore, Action openSettings, Action openStats)
     {
         _stateStore = stateStore;
         _openSettings = openSettings;
+        _openStats = openStats;
 
         InitializeComponent();
         Icon = AppIcons.WindowIcon;
@@ -172,6 +174,11 @@ public partial class CapsuleWindow : Window
         {
             _autoFit = false;
             _stateStore.Update(state => state.AutoFitTaskbar = false);
+
+            // 手动选尺寸等于退出自动适配：必须同时解除全局前台钩子，
+            // 否则进程会一直保留 WinEventHook（回调虽会早退，但仍是系统资源）。
+            _foregroundWatcher.Stop();
+            _foregroundReassertTimer?.Stop();
         }
 
         _viewModel.SetSize(size);
@@ -759,6 +766,7 @@ public partial class CapsuleWindow : Window
     }
 
     private void OnOpenSizeSettings(object sender, RoutedEventArgs e) => _openSettings();
+    private void OnOpenStats(object sender, RoutedEventArgs e) => _openStats();
 
     /// <summary>
     /// 持久化位置/尺寸/固定状态。设置窗口与胶囊共用同一个 store 实例，
