@@ -1,0 +1,268 @@
+<Window x:Class="HotspotMeter.App.Views.StatsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:HotspotMeter.App.ViewModels"
+        mc:Ignorable="d"
+        Title="流量统计 — HotspotMeter"
+        Width="980" Height="700"
+        MinWidth="860" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgApp}"
+        Foreground="{StaticResource TextPrimary}"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        d:DataContext="{d:DesignInstance Type=vm:StatsViewModel}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <Style x:Key="ScopeButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingButtonStyle}">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+
+        <Style x:Key="StatLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+        </Style>
+
+        <Style x:Key="StatValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+        </Style>
+
+        <Style x:Key="BarRectangleStyle" TargetType="Rectangle">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="RadiusX" Value="3" />
+            <Setter Property="RadiusY" Value="3" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="28,24,28,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部：标题、更新时间、查询与刷新 -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel>
+                <TextBlock Text="流量统计" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Style="{StaticResource CaptionTextStyle}" Margin="0,5,0,0">
+                    <Run Text="本机热点网卡口径 · " />
+                    <Run Text="{Binding UpdateText, Mode=OneWay}" />
+                </TextBlock>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="今日" Style="{StaticResource ScopeButtonStyle}"
+                        Command="{Binding SelectTodayCommand}" />
+                <Button Content="最近 7 天" Style="{StaticResource ScopeButtonStyle}"
+                        Command="{Binding SelectSevenDaysCommand}" />
+                <Border Width="1" Background="{StaticResource BorderSubtle}" Margin="8,4,12,4" />
+                <TextBox Width="116" Height="30" Style="{StaticResource DarkTextBoxStyle}"
+                         Text="{Binding DateQueryText, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="按日期查询，格式 yyyy-MM-dd" VerticalContentAlignment="Center" />
+                <Button Content="查询" Height="30" Padding="14,0" Margin="8,0,0,0"
+                        Style="{StaticResource SettingButtonStyle}" Command="{Binding QueryDateCommand}" />
+                <Button Content="刷新" Height="30" Padding="16,0" Margin="8,0,0,0"
+                        Style="{StaticResource PrimaryButtonStyle}" Command="{Binding RefreshCommand}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- 概览卡片 -->
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,18,0,0" Padding="20,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding RangeTitle}" Style="{StaticResource StatLabelStyle}" />
+                    <TextBlock Text="{Binding TotalText}" Style="{StaticResource StatValueStyle}"
+                               FontSize="30" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="下载流量" Style="{StaticResource StatLabelStyle}" />
+                    <TextBlock Text="{Binding DownloadText}" Style="{StaticResource StatValueStyle}"
+                               Foreground="{StaticResource AccentGreen}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="上传流量" Style="{StaticResource StatLabelStyle}" />
+                    <TextBlock Text="{Binding UploadText}" Style="{StaticResource StatValueStyle}"
+                               Foreground="#64A8FF" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 最近 7 天柱状图 -->
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="20,16,20,12">
+            <StackPanel>
+                <Grid>
+                    <TextBlock Text="最近 7 天" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="每根柱子 = 下载（绿）+ 上传（蓝），鼠标悬停查看数值"
+                               Style="{StaticResource HintTextStyle}" HorizontalAlignment="Right"
+                               VerticalAlignment="Center" />
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Days}" Margin="0,14,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="7" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="6,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="160" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="{Binding TotalText}" FontSize="11"
+                                           Foreground="{StaticResource TextSecondary}"
+                                           HorizontalAlignment="Center" Margin="0,0,0,6" />
+
+                                <Grid Grid.Row="1" VerticalAlignment="Bottom">
+                                    <Border Height="2" VerticalAlignment="Bottom"
+                                            Background="{StaticResource BorderSubtle}" />
+                                    <StackPanel VerticalAlignment="Bottom" ToolTipService.InitialShowDelay="120">
+                                        <StackPanel.ToolTip>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DateLabel}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding DetailText}" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </StackPanel.ToolTip>
+                                        <Rectangle Height="{Binding UploadHeight}" Fill="#64A8FF"
+                                                   Style="{StaticResource BarRectangleStyle}" />
+                                        <Rectangle Height="{Binding DownloadHeight}" Fill="{StaticResource AccentGreen}"
+                                                   Style="{StaticResource BarRectangleStyle}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel Grid.Row="2" Margin="0,7,0,0" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding DateLabel}" FontSize="11" HorizontalAlignment="Center" />
+                                    <TextBlock Text="{Binding WeekdayLabel}" FontSize="10"
+                                               Foreground="{StaticResource TextTertiary}" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- 程序排行 -->
+        <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="20,16">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <TextBlock Text="各程序流量" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="{Binding ProgramStatus}" Style="{StaticResource HintTextStyle}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" MaxWidth="560"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,12,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="40" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="70" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Text="程序" Style="{StaticResource HintTextStyle}" />
+                    <TextBlock Grid.Column="2" Text="下载" Style="{StaticResource HintTextStyle}" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="上传" Style="{StaticResource HintTextStyle}" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="4" Text="合计" Style="{StaticResource HintTextStyle}" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="5" Text="占比" Style="{StaticResource HintTextStyle}" HorizontalAlignment="Right" />
+                </Grid>
+
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
+                    <ItemsControl ItemsSource="{Binding Programs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="70" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Width="26" Height="26" CornerRadius="7"
+                                                Background="{StaticResource BgRaised}" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Initial}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextSecondary}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Margin="0,0,12,0" />
+
+                                        <TextBlock Grid.Column="2" Text="{Binding DownloadText}" FontSize="12"
+                                                   Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="3" Text="{Binding UploadText}" FontSize="12"
+                                                   Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="4" Text="{Binding TotalText}" FontSize="12"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="5" Text="{Binding ShareText}" FontSize="12"
+                                                   Foreground="{StaticResource TextTertiary}" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- 底部状态与错误 -->
+        <Grid Grid.Row="4" Margin="2,12,2,0">
+            <TextBlock Text="{Binding StatusText}" Style="{StaticResource HintTextStyle}"
+                       TextTrimming="CharacterEllipsis" MaxWidth="760" HorizontalAlignment="Left" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,2,0">
+                <TextBlock Text="{Binding ErrorText}" Foreground="#FF6B6B" FontSize="11"
+                           Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Button Content="重试" Height="26" Padding="12,0"
+                        Style="{StaticResource SettingButtonStyle}"
+                        Command="{Binding RefreshCommand}"
+                        Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

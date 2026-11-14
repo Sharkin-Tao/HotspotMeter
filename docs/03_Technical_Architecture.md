@@ -178,3 +178,13 @@ public interface ISessionRepository
 | WPF 应用骨架（无窗口、启动即退出） | 已完成，仅用于验证工具链 |
 | `ByteSizeFormatter` + 13 个测试 | 已完成（暂定格式规则） |
 | 其余接口/服务/表结构/窗口 | 未实现 |
+## 阶段 5 新增组件（2026-11-14）
+
+- `App/Services/TrafficHistoryStore`：持久化协调器；稳定 ProfileKey、10 s 检查点、跨午夜分段、OperationId 去重、
+  启动收尾遗留会话；写入通过 Infrastructure 的 `SqliteWriter` 单消费者执行。
+- `App/Services/TrafficStatsService`：只读查询 `DailyTraffic`，按本地自然日返回 `DailyUsage`（缺失 != 0）。
+- `App/Services/AttributedUsageReader`：WinRT 逐程序归属；纯名称解析已下沉到 `Core/Usage/AttributionDisplayName`。
+- `App/Services/TaskbarForegroundWatcher`、`StartupRegistrationService`：Win32 事件钩子与 HKCU Run 注册。
+- `App/ViewModels/StatsViewModel` + `App/Views/StatsWindow`：统计窗口；由 `App.OpenStats()` 单实例管理。
+- 新增依赖边界：App 的 TFM 升为 `net10.0-windows10.0.26100.0` 才能引用 WinRT 网络归属 API；
+  Core/Infrastructure/Tests 仍保持 `net10.0`，Core 不出现 Windows 类型。

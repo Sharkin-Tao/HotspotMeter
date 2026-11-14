@@ -1,4 +1,4 @@
-# 10 开发日志
+﻿# 10 开发日志
 
 > 记录每次实际执行的操作、命令、结果与遗留问题。只写发生过的事；计划与设想去 08/09。
 
@@ -1022,3 +1022,44 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 限制（如实记录）：紧凑/正常密度下数字列被胶囊宽度与速度区挤压，7–8 字符长数值仍受 `Viewbox` 列宽缩放
   （renderScale 0.56–0.83），声明字号变大但渲染尺寸接近原值；最简档（48 DIP 任务栏）已完整实现 18%。
 - 文档：`docs/02` §7.5/§7.7、`docs/09` D-083、本日志、`PROJECT_CONTEXT`。
+
+## 2026-11-14 阶段 5：任务栏层级、启动管理、历史持久化与统计窗口
+
+### 5.1 任务栏层级
+- 新增 `HotspotMeter.App/Services/TaskbarForegroundWatcher.cs`：`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`，
+  仅前台为 `Shell_TrayWnd`/`Shell_SecondaryTrayWnd`/`TrayNotifyWnd` 时触发；无定时器。
+- `CapsuleWindow` 在自动适配开启时启动监听、关闭时解钩；回调只做 `EnsureTopmost()`（`SWP_NOACTIVATE`）。
+- 自检：`topmost.watcher=True count=0->1 afterDisable=False`。
+
+### 5.2 开机自启与任务栏显示
+- 新增 `StartupRegistrationService`（HKCU Run，值名 `HotspotMeter`、带引号路径、所有权校验）；
+  `ISettingsHost`/`App`/`SettingsViewModel`/`SettingsWindow` 接入，开关状态每次回读注册表。
+- `ShowStatsInTaskbar`（`bool?`，缺失=true）持久化到 `ui-state.json`，即时作用于统计窗口。
+- 自检：启用/重复启用/禁用/回读全部符合预期；任务栏开关 `False/False`、`True/True`。
+
+### 5.3 历史持久化与逐程序数据
+- 新增 `TrafficHistoryStore`：稳定 ProfileKey、10 s 检查点、`NightlySplitter`、OperationId 去重、
+  会话结束结算、启动收尾遗留 Active 会话；`MonitorSessionService` 用 `_historyTail` 串行化写入。
+- 修正 `BeginSessionAsync` 未累加每日连接次数的问题；修正 `DailyTrafficDelta.Create` 的日期参数类型；检查点改为“事务提交成功后再推进内存基线”，写库失败时下轮重算该段，避免静默丢字节。
+- 新增 `AttributedUsageReader`（WinRT），按 SSID+adapter 选 profile；名称解析抽到
+  `HotspotMeter.Core/Usage/AttributionDisplayName.cs` 并补 5 个单测。
+- 实测：6 个会话、当日 `SessionCount=6`；会话汇总 `10,431,015 / 14,377,165 B` 与 `DailyTraffic` 一致；
+  遗留 Active 会话被收尾，`active mappings=0`。
+
+### 5.4 统计窗口
+- 新增 `TrafficStatsService`（只读 SQLite）、`StatsViewModel`、`StatsWindow`（980×700）；
+  托盘增加“流量统计”，`App.OpenStats()` 单实例。
+- 功能：今日/最近 7 天/单日查询、下载/上传/总流量卡片、7 天堆叠柱、程序排行（名称/上下行/总量/占比）、
+  刷新与错误/空/不可用状态；关闭窗口后监控继续。
+- `UiDump` 增加真实文字墨迹测量与 ScrollViewer 裁剪过滤，修复误报；布局 `layout=ok texts=43`。
+
+### 测试
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet test HotspotMeter.sln --no-build`：**390/390 通过，0 失败**。
+- 运行时自检：`HOTSPOTMETER_STAGE5_TEST=artifacts/stage5-selftest3.txt`（单实例、置顶回调、注册表、任务栏显示、关闭后采样）。
+- 统计窗口：`HOTSPOTMETER_UI_STATS=artifacts/stage5-stats3.txt` + `stage5-stats3.png`。
+
+### 未完成/限制
+- 置顶不能覆盖 UAC/安全桌面；Explorer 重启恢复需人工复验。
+- 逐程序数据依赖 Windows 归属服务，存在延迟、历史缺行；未入库、未提取图标。
+- 统计窗口周/月聚合、程序图标、长跑与睡眠唤醒验收未做。

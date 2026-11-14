@@ -179,6 +179,39 @@
                         </StackPanel>
                         <TextBlock Text="关闭后启动时只保留托盘图标，后台监控仍然运行。"
                                    Style="{StaticResource HintTextStyle}" Margin="0,8,0,0" />
+
+                        <Separator Background="{StaticResource BorderSubtle}" Margin="0,12" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="开机自动启动 HotspotMeter" FontSize="12" />
+                                <TextBlock Text="{Binding StartupStatusText}" Style="{StaticResource HintTextStyle}"
+                                           Margin="0,2,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" Style="{StaticResource SwitchCheckBoxStyle}"
+                                      IsChecked="{Binding AutoStart, Mode=TwoWay}" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Separator Background="{StaticResource BorderSubtle}" Margin="0,12" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="统计窗口出现在任务栏" FontSize="12" />
+                                <TextBlock Text="控制独立流量统计窗口是否拥有任务栏按钮，与“自动适配任务栏”无关；关闭后仍可从托盘打开。"
+                                           Style="{StaticResource HintTextStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" Style="{StaticResource SwitchCheckBoxStyle}"
+                                      IsChecked="{Binding ShowStatsInTaskbar, Mode=TwoWay}" VerticalAlignment="Center" />
+                        </Grid>
+
                         <TextBlock Text="关闭设置或统计窗口不会停止监控；退出程序请使用托盘菜单或胶囊右键菜单。"
                                    Style="{StaticResource HintTextStyle}" Margin="0,6,0,0" />
                     </StackPanel>

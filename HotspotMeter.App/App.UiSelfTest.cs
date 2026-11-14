@@ -420,6 +420,141 @@ public partial class App
         Shutdown();
     }
 
+    /// <summary>
+    /// 打开真实统计窗口，等待一次异步加载后把文本边界写盘；用于验证独立窗口、
+    /// 程序排行与 7 天柱状图确实由真实数据库驱动，而不是静态占位。
+    /// </summary>
+    internal async Task RunStatsDumpAsync(string outputPath)
+    {
+        await Task.Delay(1200);
+        OpenStats();
+
+        // 数据库查询 + WinRT 逐应用查询都是异步的，给首轮加载留出时间。
+        await Task.Delay(2600);
+
+        var builder = new StringBuilder();
+        builder.AppendLine(UiDump.Describe(_statsWindow!));
+        builder.AppendLine(UiDump.CheckLayout(_statsWindow!));
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
+        File.WriteAllText(outputPath, builder.ToString());
+
+        var pngPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_STATS_PNG");
+        if (!string.IsNullOrWhiteSpace(pngPath))
+        {
+            UiDump.SavePng(_statsWindow!, pngPath);
+        }
+
+        if (Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_DUMP_EXIT") == "1")
+        {
+            Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// 阶段 5 的运行时验收：真实读写 HKCU Run、真实切换任务栏显示、真实触发置顶回调，
+    /// 并验证统计窗口单实例与关闭后后台继续采样。仅在显式设置环境变量时运行。
+    /// </summary>
+    internal async Task RunStage5SelfTestAsync(string outputPath)
+    {
+        var log = new StringBuilder();
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
+        try
+        {
+            if (!_capsule.IsVisible)
+            {
+                _capsule.ShowCapsule();
+                await Task.Delay(600);
+            }
+
+            await Task.Delay(800);
+            var before = _startupRegistration.Read();
+            log.AppendLine($"startup.before={before.State} command={before.Command}");
+            var wasOurs = before.State == StartupRegistrationState.RegisteredForCurrentPath;
+            if (before.State == StartupRegistrationState.RegisteredForOtherPath)
+            {
+                log.AppendLine("startup.write=skipped(foreign-entry)");
+            }
+            else
+            {
+                var enabled = _startupRegistration.Enable();
+                var again = _startupRegistration.Enable();
+                log.AppendLine(
+                    $"startup.enable={enabled.State} again={again.State} read={_startupRegistration.Read().State}");
+                var disabled = _startupRegistration.Disable();
+                log.AppendLine($"startup.disable={disabled.State} read={_startupRegistration.Read().State}");
+                if (wasOurs)
+                {
+                    _startupRegistration.Enable();
+                    log.AppendLine($"startup.restored={_startupRegistration.Read().State}");
+                }
+            }
+
+            var persisted = _stateStore.GetOrCreate().ShowStatsInTaskbar;
+            log.AppendLine($"taskbar.value={persisted?.ToString() ?? "null(default-true)"}");
+            SetShowStatsInTaskbar(false);
+            OpenStats();
+            await Task.Delay(700);
+            log.AppendLine(
+                $"taskbar.off persisted={ShowStatsInTaskbar} window={_statsWindow?.ShowInTaskbar}");
+            SetShowStatsInTaskbar(true);
+            log.AppendLine(
+                $"taskbar.on persisted={ShowStatsInTaskbar} window={_statsWindow?.ShowInTaskbar}");
+            if (persisted is null)
+            {
+                _stateStore.Update(state => state.ShowStatsInTaskbar = null);
+            }
+
+            var autoFitBefore = _capsule.IsAutoFitTaskbar;
+            _capsule.SetAutoFitTaskbar(true);
+            await Task.Delay(400);
+            var reassertBefore = _capsule.TopmostReassertCount;
+            var watcherRunning = _capsule.IsForegroundWatcherRunning;
+            _capsule.SimulateTaskbarActivatedForTest();
+            await Task.Delay(150);
+            var reassertAfter = _capsule.TopmostReassertCount;
+            _capsule.SetAutoFitTaskbar(false);
+            await Task.Delay(250);
+            log.AppendLine(
+                $"topmost.watcher={watcherRunning} count={reassertBefore}->{reassertAfter} " +
+                $"afterDisable={_capsule.IsForegroundWatcherRunning}");
+            _capsule.SetAutoFitTaskbar(autoFitBefore);
+
+            OpenStats();
+            await Task.Delay(1400);
+            var first = _statsWindow;
+            OpenStats();
+            var same = ReferenceEquals(first, _statsWindow);
+            var stats = first?.DataContext as StatsViewModel;
+            log.AppendLine(
+                $"stats.singleInstance={same} days={stats?.Days.Count} programs={stats?.Programs.Count} " +
+                $"total={stats?.TotalText} status={stats?.ProgramStatus}");
+            first?.Close();
+            await Task.Delay(400);
+            log.AppendLine($"stats.closedReleases={_statsWindow is null}");
+
+            var snapshotsBefore = _monitor?.SnapshotCount ?? 0;
+            await Task.Delay(1600);
+            var snapshotsAfter = _monitor?.SnapshotCount ?? 0;
+            log.AppendLine($"monitor.afterClose={snapshotsBefore}->{snapshotsAfter} stillRunning={snapshotsAfter > snapshotsBefore}");
+            log.AppendLine($"ui-layout={UiDump.CheckLayout(_capsule)}");
+        }
+        catch (Exception ex)
+        {
+            log.AppendLine("STAGE5 TEST FAILED: " + ex);
+        }
+
+        try
+        {
+            File.WriteAllText(outputPath, log.ToString());
+        }
+        catch (IOException)
+        {
+            // 诊断输出失败不影响退出。
+        }
+
+        Shutdown();
+    }
+
     /// <summary>读取持久化文件里的 AutoFitTaskbar 值，用于断言设置确实落盘。</summary>
     private string PersistedAutoFitValue()
     {

@@ -15,10 +15,12 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.ToolStripMenuItem _showItem;
     private readonly Forms.ToolStripMenuItem _hideItem;
     private readonly Forms.ToolStripMenuItem _settingsItem;
+    private readonly Forms.ToolStripMenuItem _statsItem;
     private readonly Func<bool> _isCapsuleVisible;
     private bool _disposed;
 
     public TrayIconService(
+        Action openStats,
         Action openSettings,
         Action showCapsule,
         Action hideCapsule,
@@ -38,11 +40,13 @@ public sealed class TrayIconService : IDisposable
             Font = new Drawing.Font("Segoe UI", 9f),
         };
 
+        _statsItem = CreateItem("流量统计", openStats);
         _settingsItem = CreateItem("设置", openSettings);
         _showItem = CreateItem("显示悬浮胶囊", showCapsule);
         _hideItem = CreateItem("隐藏悬浮胶囊", hideCapsule);
         var exitItem = CreateItem("退出程序", exit);
 
+        _menu.Items.Add(_statsItem);
         _menu.Items.Add(_settingsItem);
         _menu.Items.Add(new Forms.ToolStripSeparator());
         _menu.Items.Add(_showItem);
@@ -94,6 +98,9 @@ public sealed class TrayIconService : IDisposable
 
     /// <summary>开发期自检用：走真实的托盘"设置"菜单点击路径。</summary>
     internal void ClickSettingsForTest() => _settingsItem.PerformClick();
+
+    /// <summary>开发期自检用：走真实的托盘"流量统计"菜单点击路径。</summary>
+    internal void ClickStatsForTest() => _statsItem.PerformClick();
 
     public void Dispose()
     {

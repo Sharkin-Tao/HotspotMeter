@@ -34,6 +34,7 @@ public partial class CapsuleWindow : Window
     private readonly WindowStateStore _stateStore;
     private readonly Action _openSettings;
     private readonly TaskbarDetector _taskbarDetector = new();
+    private readonly TaskbarForegroundWatcher _foregroundWatcher = new();
     private CapsuleViewModel? _viewModel;
     private bool _positionRestored;
     private bool _autoFit;
@@ -43,6 +44,7 @@ public partial class CapsuleWindow : Window
     private TaskbarCapsuleFit? _lastFit;
     private uint _taskbarCreatedMessage;
     private string? _lastAnchorNote;
+    private int _topmostReassertCount;
 
     public CapsuleWindow(WindowStateStore stateStore, Action openSettings)
     {
@@ -57,6 +59,19 @@ public partial class CapsuleWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
         Closing += (_, _) => PersistState();
+
+        _foregroundWatcher.TaskbarActivated += (_, _) =>
+        {
+            // 自动适配时胶囊位于任务栏带内，任务栏被点击后会把自身抬到置顶窗口之上；
+            // 这里只在前台确实变成任务栏时补一次 SWP_NOACTIVATE，不抢焦点、不轮询。
+            if (!_autoFit || !IsVisible)
+            {
+                return;
+            }
+
+            EnsureTopmost();
+            _topmostReassertCount++;
+        };
     }
 
     public bool IsCapsuleVisible => IsVisible;
@@ -97,6 +112,7 @@ public partial class CapsuleWindow : Window
         if (_autoFit)
         {
             ApplyAutoFitSize();
+            _foregroundWatcher.Start();
         }
     }
 
@@ -195,11 +211,13 @@ public partial class CapsuleWindow : Window
 
             ApplyAutoFitSize(positionAtAnchor: true);
             EnsureTopmost();
+            _foregroundWatcher.Start();
         }
         else
         {
             _stateStore.Update(state => state.AutoFitTaskbar = false);
             RestoreManualSize();
+            _foregroundWatcher.Stop();
         }
     }
 
@@ -294,6 +312,13 @@ public partial class CapsuleWindow : Window
 
     /// <summary>最近一次自动定位的说明，供设置窗口/自检显示“为什么没定位”。</summary>
     public string? LastAnchorNote => _lastAnchorNote;
+
+    /// <summary>前台切到任务栏后重新声明置顶的次数，供自检确认事件路径真的执行。</summary>
+    internal int TopmostReassertCount => _topmostReassertCount;
+
+    internal bool IsForegroundWatcherRunning => _foregroundWatcher.IsRunning;
+
+    internal void SimulateTaskbarActivatedForTest() => _foregroundWatcher.RaiseForTest();
 
     /// <summary>最近一次任务栏检测输入（物理像素），供自检断言位置确实落在任务栏内。</summary>
     internal TaskbarLayoutInput? LastDetectionInput => _lastDetection?.Input;
@@ -439,6 +464,7 @@ public partial class CapsuleWindow : Window
     {
         _taskbarDebounce?.Stop();
         _taskbarDebounce = null;
+        _foregroundWatcher.Dispose();
 
         // 必须解钩：窗口重建或退出后继续响应消息会访问已释放的窗口。
         _hwndSource?.RemoveHook(WndProc);

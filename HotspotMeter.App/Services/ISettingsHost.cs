@@ -30,5 +30,18 @@ public interface ISettingsHost
 
     void SetShowCapsuleOnStartup(bool show);
 
+    /// <summary>开机自启动是否已对“当前路径”生效；读注册表真实状态，不读缓存。</summary>
+    bool AutoStartEnabled { get; }
+
+    /// <summary>启动项诊断文本：路径不一致、权限失败等必须如实显示。</summary>
+    string StartupStatusText { get; }
+
+    /// <summary>统计窗口是否显示任务栏按钮；旧配置缺省为 true。</summary>
+    bool ShowStatsInTaskbar { get; }
+
+    void SetAutoStart(bool enabled);
+
+    void SetShowStatsInTaskbar(bool show);
+
     void ResetPosition();
 }

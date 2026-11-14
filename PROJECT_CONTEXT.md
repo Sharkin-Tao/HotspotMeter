@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 4C-14 已实现（自动适配任务栏时流量数字 ×1.18，关闭立即恢复；最简档 renderScale=1.000；构建 0/0，385/385 测试通过），等待用户验收** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施（3A）、业务表 v2/v3 与基础仓储/OperationId/时间切分/日汇总/摘要编码（3B-1～3B-5a）；App：胶囊窗口 + `CapsuleViewModel` + `MonitorSessionService` + 窗口位置/尺寸存储 + 托盘 + 设置窗口；`tools/ApiProbe`（阶段 1 原型）与 `tools/MonitorHost`（阶段 2 宿主），均不入解决方案 |
-| 未实现 | 统计窗口、右键菜单“流量统计”功能、快照/会话持久化管线（StepBuffer、`StepProduced`、`SessionPersistenceService`、Settlement 入口、Writer 状态机）、启动恢复与一致性修复、开机启动、用户选择目标热点 |
-| 下一次要做的事 | 用户验收 4C-14 自动适配字号（重点：48 DIP 任务栏下数字是否明显变大、与速度区间距是否仍协调）；注意紧凑/正常密度受列宽限制，长数值渲染尺寸不会同比放大（见 4C-14 限制）；验收后进入统计窗口开发 |
+| 当前阶段 | **阶段 5 已实现（任务栏置顶增强、开机自启、任务栏显示默认开启、历史持久化接入、独立统计窗口），等待用户验收** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe 均不入解决方案 |
+| 未实现 | 统计窗口的周/月汇总（当前为今日/最近 7 天/单日）、程序图标提取（当前仅名称）、逐应用历史数据持久化（当前按查询日实时读 Windows API）、用户手动选择目标热点的 UI、睡眠/唤醒专项恢复编排 |
+| 下一次要做的事 | 用户验收阶段 5：重点看①自动适配时胶囊是否仍会被普通窗口/任务栏遮挡（被遮挡时点一下任务栏可触发恢复）、②设置里开机自启开关与注册表是否一致、③统计窗口数据与真实使用是否吻合、程序排行是否明确标注系统/未归属差额；验收后再决定阶段 6 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -206,6 +206,16 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - 验证：`dotnet build` 0/0、`dotnet test` **385/385**；`artifacts/ui-selftest34/selftest.txt`：48 DIP 任务栏 `trafficFont=18.9 fontScale=1.18 renderScale=1.000`、数字 72×22.7、`layout=ok texts=8`；40 DIP 档仍不越界；速度中心差 ≤0.33；关闭后 `trafficFont=46 fontScale=1.00`；四档/自定义字号 31.6/40.3/46/57.5 不变。
 - 限制：紧凑/正常密度下数字列同时受胶囊宽度与速度区挤压，7–8 字符长数值的 `renderScale` 为 0.56–0.83，声明字号变大但渲染尺寸接近原值；只有最简档（48 DIP 任务栏）完整实现 18%。
 
+### 阶段 5 实际结果（2026-11-14，任务栏层级 + 启动管理 + 统计窗口）
+
+- **5.1 任务栏层级**：新增 `TaskbarForegroundWatcher`（`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`，仅回调、不轮询），只在自动适配开启时启动；前台切换到任务栏窗口时重新 `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)`。自检实测 `watcher=True count=0->1 afterDisable=False`。
+- **5.2 启动管理**：`StartupRegistrationService` 直接读写 HKCU Run（值名 `HotspotMeter`，带引号 exe 路径），默认不注册；自检实测 `NotRegistered → RegisteredForCurrentPath → 再次 Enable 仍单条 → Disable → NotRegistered`。`ShowStatsInTaskbar` 为 `bool?`，缺失按 true，显式 false 保留；自检实测设置即时作用于统计窗口。
+- **5.3 历史与逐程序**：新增 `TrafficHistoryStore`（10 s 检查点、稳定 ProfileKey、跨午夜切分、OperationId 去重、每日 SessionCount +1、启动时把遗留 Active 会话按最后检查点收尾）；`MonitorSessionService` 用串行任务链保证“先会话后快照”。逐程序走 WinRT `GetAttributedNetworkUsageAsync`（非打包进程可用），按 SSID+adapter 选 profile，桌面程序名称从路径派生，空归属单列“未归属流量（系统/服务）”，合计差额只展示不分摊。
+- **5.4 统计窗口**：托盘“流量统计”单实例打开，980×700 深色，今日/最近 7 天/指定日期、堆叠柱、程序排行（名称/上下行/总量/占比，分母为列表合计）、刷新与错误/不可用状态；关闭窗口后引擎继续采样（自检 `5->6`）。
+- **实测数据**：数据库 6 个会话、当日 `SessionCount=6`；`ConnectionSessions` 汇总 `10,431,015 / 14,377,165 B` 与 `DailyTraffic` 完全一致；快照分段求和一致。统计窗口真实显示“今日 23.66 MB”，程序 67 项，状态注明未归属差额 3.13 MB。
+- **验证**：`dotnet build` 0/0；`dotnet test` **390/390**（新增 5 个归属名称解析测试）；运行时自检 `artifacts/stage5-selftest2.txt`；统计窗口布局 `artifacts/stage5-stats3.txt`（`layout=ok texts=43`）与截图 `artifacts/stage5-stats3.png`。
+- **限制**：置顶无法绝对覆盖 UAC/安全桌面等系统界面；Windows 归属 API 有延迟且桌面程序 `AttributionName` 为空；逐程序数据未入库（每次按日期查询）；程序图标暂未提取；统计窗口周/月汇总未实现；未做 24 h 长跑与真实 Explorer 重启的人工验收。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -304,3 +314,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-13 | 阶段 4C-12：说明标签自身 `Opacity=0.65`（父容器与数字保持 1.0），UiDump 增加透明度隔离断言；对比度实测记录；新增 D-081；提交全部未提交改动 |
 | 2026-11-13 | 阶段 4C-13：标签与数字统一 `Microsoft YaHei UI` + Bold，消除 CJK 逐字符回退与 SemiBold→Bold 错配；UiDump 增加字重/样式/字形覆盖断言；新增 D-082；提交 |
 | 2026-11-13 | 阶段 4C-14：自动适配任务栏时流量数字 ×1.18（最简档收窄水平内边距保证 renderScale=1.0），关闭立即恢复；修复 `SetSize` 倍率残留；UiDump 增加渲染尺寸诊断；新增 D-083；提交 |
+| 2026-11-14 | 阶段 5：任务栏置顶事件监听、HKCU 开机自启、任务栏显示默认开启、`TrafficHistoryStore` 持久化接入、WinRT 逐程序归属读取、独立统计窗口；390 项测试通过；新增 D-084～D-089；统一提交 |

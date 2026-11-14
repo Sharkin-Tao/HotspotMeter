@@ -43,6 +43,12 @@ public sealed class CapsuleWindowState
     public double? ManualWidth { get; set; }
 
     public double? ManualHeight { get; set; }
+
+    /// <summary>
+    /// 统计窗口是否显示任务栏按钮。为空（旧文件）按开启处理：这是新功能的默认值，
+    /// 但不能覆盖用户已经显式保存的 false。
+    /// </summary>
+    public bool? ShowStatsInTaskbar { get; set; }
 }
 
 /// <summary>

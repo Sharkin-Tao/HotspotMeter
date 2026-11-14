@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -115,17 +116,20 @@ internal static class UiDump
     public static string CheckLayout(Window window)
     {
         var bounds = new Rect(0, 0, window.ActualWidth, window.ActualHeight);
+        var dpi = VisualTreeHelper.GetDpi(window);
         var items = new List<(string Text, Rect Rect)>();
         foreach (var textBlock in FindTextBlocks(window))
         {
-            if (string.IsNullOrEmpty(textBlock.Text))
+            if (string.IsNullOrEmpty(textBlock.Text) || !textBlock.IsVisible)
             {
                 continue;
             }
 
-            var rect = textBlock.TransformToAncestor(window)
-                .TransformBounds(new Rect(0, 0, textBlock.ActualWidth, textBlock.ActualHeight));
-            items.Add((textBlock.Text, rect));
+            var rect = VisibleTextRect(textBlock, window, dpi.PixelsPerDip);
+            if (rect is { } visible)
+            {
+                items.Add((textBlock.Text, visible));
+            }
         }
 
         var outOfBounds = items
@@ -162,6 +166,60 @@ internal static class UiDump
         }
 
         return $"layout={verdict} texts={items.Count}{detail}";
+    }
+
+    /// <summary>
+    /// 文本块的实际"墨迹"矩形：TextBlock 默认拉伸占满整列，直接拿 ActualWidth 会把
+    /// 同行左右两块误判为重叠。这里按 FormattedText 量出真实文字宽度，并按对齐方式定位；
+    /// 同时把 ScrollViewer 内只露出一部分的列表行排除，避免把"滚动出视口"当成越界。
+    /// </summary>
+    private static Rect? VisibleTextRect(TextBlock textBlock, Window window, double pixelsPerDip)
+    {
+        var layout = textBlock.TransformToAncestor(window)
+            .TransformBounds(new Rect(0, 0, textBlock.ActualWidth, textBlock.ActualHeight));
+        var typeface = new Typeface(
+            textBlock.FontFamily,
+            textBlock.FontStyle,
+            textBlock.FontWeight,
+            textBlock.FontStretch);
+        var formatted = new FormattedText(
+            textBlock.Text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            textBlock.FontSize,
+            Brushes.Black,
+            pixelsPerDip);
+
+        var width = Math.Min(layout.Width, formatted.WidthIncludingTrailingWhitespace);
+        var x = textBlock.TextAlignment switch
+        {
+            TextAlignment.Center => layout.X + ((layout.Width - width) / 2),
+            TextAlignment.Right => layout.X + layout.Width - width,
+            _ => layout.X,
+        };
+        var rect = new Rect(x, layout.Y, width, Math.Min(layout.Height, formatted.Height));
+
+        DependencyObject? ancestor = VisualTreeHelper.GetParent(textBlock);
+        while (ancestor is not null and not ScrollViewer)
+        {
+            ancestor = VisualTreeHelper.GetParent(ancestor);
+        }
+
+        if (ancestor is ScrollViewer viewer)
+        {
+            var viewport = viewer.TransformToAncestor(window)
+                .TransformBounds(new Rect(0, 0, viewer.ActualWidth, viewer.ActualHeight));
+            var intersection = Rect.Intersect(rect, viewport);
+
+            // 部分可见说明它被滚动视口裁切，不属于当前可见布局缺陷。
+            if (intersection.Width < rect.Width - 0.5 || intersection.Height < rect.Height - 0.5)
+            {
+                return null;
+            }
+        }
+
+        return rect;
     }
 
     /// <summary>

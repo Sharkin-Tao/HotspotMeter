@@ -292,3 +292,15 @@ PRAGMA busy_timeout = 5000;
 2. 是否需要"按热点分别统计"的界面（当前数据模型支持，UI 只展示目标热点）。
 3. `DailyTraffic` 的 `ConnectedSeconds` 是否要扣除"睡眠/唤醒"期间（当前：不归属任何会话，故自然不计入）。
 4. 是否需要导出 CSV。
+## 10. 阶段 5 落地说明（2026-11-14）
+
+- Schema 仍为 **v3**，未新增表；总流量走 `TrafficSnapshots + DailyTraffic`，会话走 `ConnectionSessions + SessionRunMappings`。
+- `HotspotProfiles.ProfileKey` 由“接口 GUID + SSID”派生（`TrafficHistoryStore.StableProfileKey`），不再每次启动生成随机值；
+  同一热点跨重启落到同一 ProfileId。
+- `DailyTraffic.SessionCount` 在 `BeginSessionAsync` 增加 1（跨午夜只记开始日），
+  `ConnectedMilliseconds` 由检查点分段累加；两者都由增量 UPSERT 维护。
+- 异常退出遗留的 `SessionStatus=0` 会在下次启动时被收尾为
+  `SessionStatus=2 / EndReason=5(RecoveryRejected) / ResumeOutcome=4(InterfaceMissing)`，
+  `EndedAtUtc=COALESCE(LastPersistedToUtc, StartedAtUtc)`，不补空档字节；对应映射改为 `MappingStatus=2`。
+- 逐程序流量**不入库**：当前每次查询按选定日期实时调用 Windows 归属 API。原因见 D-088；
+  因此没有“按应用历史表”，也不存在与总流量重复累计的问题。

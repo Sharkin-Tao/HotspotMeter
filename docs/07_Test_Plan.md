@@ -103,3 +103,33 @@
 - 开发机：Windows 11 专业版 10.0.26200，x64，.NET SDK 10.0.402。
 - 需要额外准备：一台可开热点的 Android 手机；一个可用的第二显示器（或分辨率切换）用于 DPI/多屏测试；标准用户账户（验证不需要管理员权限）。
 - 测试数据：临时 SQLite 文件库，测试结束删除；不在开发者真实数据目录上做破坏性测试。
+## 阶段 5 运行时验收（2026-11-14）
+
+```powershell
+# 构建与单测
+dotnet build HotspotMeter.sln
+dotnet test HotspotMeter.sln --no-build
+
+# 阶段 5 运行时自检（会临时写/删 HKCU Run，结束后恢复）
+$env:HOTSPOTMETER_STAGE5_TEST="$PWD\artifacts\stage5-selftest2.txt"
+.\HotspotMeter.App\bin\Debug\net10.0-windows10.0.26100.0\HotspotMeter.exe
+
+# 统计窗口布局 + 截图（真实数据库只读查询）
+$env:HOTSPOTMETER_UI_STATS="$PWD\artifacts\stage5-stats3.txt"
+$env:HOTSPOTMETER_UI_STATS_PNG="$PWD\artifacts\stage5-stats3.png"
+$env:HOTSPOTMETER_UI_DUMP_EXIT="1"
+.\HotspotMeter.App\bin\Debug\net10.0-windows10.0.26100.0\HotspotMeter.exe
+```
+
+结果：
+- `dotnet test`：390 通过 / 0 失败 / 0 跳过（新增 5 个 `AttributionDisplayName` 单测）。
+- 自检输出：开机自启注册/重复注册/删除、任务栏显示即时生效、置顶 watcher `0->1`、
+  统计窗口单实例、关闭后采样 `5->6`。
+- 统计窗口：`layout=ok texts=43`。
+
+人工验收（未自动化）：
+1. 打开自动适配，点击任务栏/其他窗口，确认胶囊可见性；被遮挡时点任务栏应恢复。
+2. 设置中开启开机自启，注销/登录验证；关闭后确认 `HKCU\...\Run\HotspotMeter` 被删除。
+3. Explorer 重启（任务管理器重启资源管理器）后胶囊位置/层级恢复。
+4. 断开/重连热点、跨午夜、睡眠唤醒后统计窗口日期与总量是否正确。
+5. 长时间运行观察内存、句柄。

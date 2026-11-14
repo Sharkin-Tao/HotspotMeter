@@ -34,6 +34,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _autoFitTaskbar;
     private string _taskbarStatusText = string.Empty;
     private string _autoFitHint = string.Empty;
+    private bool _autoStart;
+    private bool _showStatsInTaskbar;
+    private string _startupStatusText = string.Empty;
 
     public SettingsViewModel(ISettingsHost host)
     {
@@ -190,6 +193,46 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         private set => Set(ref _autoFitHint, value);
     }
 
+    /// <summary>
+    /// 开机自启动。setter 直接写注册表并回读；失败时把真实原因放进
+    /// <see cref="StartupStatusText"/>，开关回到实际状态而不是“看起来已开启”。
+    /// </summary>
+    public bool AutoStart
+    {
+        get => _autoStart;
+        set
+        {
+            if (!Set(ref _autoStart, value))
+            {
+                return;
+            }
+
+            _host.SetAutoStart(value);
+            RefreshStartupState();
+        }
+    }
+
+    /// <summary>统计窗口是否出现在任务栏；与“自动适配任务栏”完全独立。</summary>
+    public bool ShowStatsInTaskbar
+    {
+        get => _showStatsInTaskbar;
+        set
+        {
+            if (!Set(ref _showStatsInTaskbar, value))
+            {
+                return;
+            }
+
+            _host.SetShowStatsInTaskbar(value);
+        }
+    }
+
+    public string StartupStatusText
+    {
+        get => _startupStatusText;
+        private set => Set(ref _startupStatusText, value);
+    }
+
     public Brush MiniPresetBackground => SelectedBackground(CapsuleSize.Mini);
 
     public Brush SmallPresetBackground => SelectedBackground(CapsuleSize.Small);
@@ -223,6 +266,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         _autoFitTaskbar = _host.AutoFitTaskbar;
         OnPropertyChanged(nameof(AutoFitTaskbar));
+        _showStatsInTaskbar = _host.ShowStatsInTaskbar;
+        OnPropertyChanged(nameof(ShowStatsInTaskbar));
+        RefreshStartupState();
         TaskbarStatusText = _host.TaskbarStatusText;
         AutoFitHint = _host.IsPinned && _host.AutoFitTaskbar
             ? "已固定：位置锁定，自动定位不会移动窗口；尺寸仍会随任务栏高度变化。"
@@ -237,6 +283,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SmallPresetBackground));
         OnPropertyChanged(nameof(StandardPresetBackground));
         OnPropertyChanged(nameof(LargePresetBackground));
+    }
+
+    private void RefreshStartupState()
+    {
+        _autoStart = _host.AutoStartEnabled;
+        OnPropertyChanged(nameof(AutoStart));
+        StartupStatusText = _host.StartupStatusText;
     }
 
     private void ApplyPreset(CapsuleSize size)

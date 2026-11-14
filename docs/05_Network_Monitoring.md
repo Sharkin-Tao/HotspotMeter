@@ -229,3 +229,17 @@ FreeMibTable(tablePtr);
 4. 企业级/隐藏 SSID 热点、多个无线网卡同时存在时的表现（本机只有 1 个 WLAN 接口，未覆盖）。
 5. 目标热点与同名已知 Wi-Fi 自动切换时的行为。
 6. 超长睡眠（数小时）与休眠（S4）下的 `TickCount64` 语义差异，未单独测试。
+## 13. 逐程序归属流量（阶段 5 验证结论）
+
+- 数据源：`Windows.Networking.Connectivity.ConnectionProfile.GetAttributedNetworkUsageAsync`，
+  配合 `GetNetworkUsageAsync(..., DataUsageGranularity.PerDay, states)` 取总量；App 的 TFM 因此提升到
+  `net10.0-windows10.0.26100.0`（`SupportedOSPlatformVersion=10.0.17763.0`）。
+- 权限：非打包 WPF 进程、无管理员、无 manifest/受限能力即可调用（探针实测 `packaged=False`）。
+  枚举中没有 `Daily`，按日查询使用 `PerDay`。
+- profile 选择：同一适配器下可能同时存在多个 SSID 配置，必须用“当前 SSID + 接口 GUID”精确选；
+  只按 SSID 或只按 adapter 都会拿到 0 流量或错误配置。
+- 返回内容：`AttributionName` 对桌面程序基本为空；`AttributionId` 可能是设备路径、包族名或空串。
+  显示名从路径 basename/包族名派生，空串单列“未归属流量（系统/服务）”，不编造进程名。
+- 准确性：逐应用合计通常**小于**系统总量，差额是系统/服务/未归属流量；禁止为对齐而分摊或把实时接口流量当逐程序数据。
+  归属统计存在延迟与历史缺行，查询失败要显示“不可用”而不是 0。
+- 图标：当前未提取（需要额外的 Shell/包信息查询），第一版只显示名称。
