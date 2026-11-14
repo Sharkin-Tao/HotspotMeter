@@ -4,17 +4,21 @@ using System.Text;
 namespace HotspotMeter.App.Services;
 
 /// <summary>
-/// 监听前台窗口变化，只在“前台变成任务栏”时通知胶囊重新声明置顶。
+/// 监听前台窗口变化，每次变化后通知胶囊重新声明置顶。
 ///
-/// 为什么不能用定时器轮询：无条件高频 SetWindowPos 会持续干扰 Z 序、增加
-/// 输入延迟，也违背“不通过不断强制置顶影响用户操作”的约束。任务栏只有在
-/// 用户点击它时才会抢到前台，因此 <c>EVENT_SYSTEM_FOREGROUND</c> 已经覆盖
-/// 需要恢复层级的那一个时刻。
+/// 为什么不再只匹配任务栏类名：点击任务栏图标后，前台会变成被激活的应用；
+/// 按下 Win 键后，前台是 SearchHost 的 CoreWindow。这两种情况下任务栏已经把
+/// 自己抬到胶囊之上，但旧实现因为类名不在白名单里而完全不处理，胶囊就被盖住。
 ///
-/// 限制：HWND_TOPMOST 只能保证位于普通窗口之上，无法覆盖开始菜单、安全
-/// 桌面、UAC 等 Shell 特殊界面；这里不尝试突破系统边界。
+/// 为什么不轮询：无条件定时 SetWindowPos 会持续干扰 Z 序并增加输入延迟。
+/// 前台切换是事件驱动的，频率与用户操作一致，不需要定时器。
+///
+/// 限制：开始菜单/搜索属于 Shell 的高优先级窗口 band（诊断读数 band 6），
+/// 普通 WIN32 窗口的 HWND_TOPMOST 只能在自己的 band 内排序，无法在开始菜单
+/// 展开期间盖住它；这里不尝试未公开的 band 接口。开始菜单关闭后前台会再次
+/// 变化，届时本监听会把胶囊恢复到任务栏之上。
 /// </summary>
-internal sealed class TaskbarForegroundWatcher : IDisposable
+internal sealed class ShellForegroundWatcher : IDisposable
 {
     private const uint EventSystemForeground = 0x0003;
     private const uint WineventOutofcontext = 0x0000;
@@ -24,14 +28,14 @@ internal sealed class TaskbarForegroundWatcher : IDisposable
     private readonly WinEventDelegate _callback;
     private IntPtr _hook;
 
-    public TaskbarForegroundWatcher()
+    public ShellForegroundWatcher()
     {
         // 委托必须由字段持有：传给原生 API 后若被 GC 回收，回调会直接崩溃。
         _callback = OnForegroundChanged;
     }
 
-    /// <summary>前台切换到任务栏（主/副任务栏或通知区域）时触发。</summary>
-    public event EventHandler? TaskbarActivated;
+    /// <summary>任意前台窗口变化；参数包含新前台窗口的类名。</summary>
+    public event EventHandler<ShellForegroundChangedEventArgs>? ForegroundChanged;
 
     public bool IsRunning => _hook != IntPtr.Zero;
 
@@ -70,8 +74,9 @@ internal sealed class TaskbarForegroundWatcher : IDisposable
 
     public void Dispose() => Stop();
 
-    /// <summary>开发期自检：不依赖真实点击任务栏即可走同一条重断言路径。</summary>
-    internal void RaiseForTest() => TaskbarActivated?.Invoke(this, EventArgs.Empty);
+    /// <summary>开发期自检：不依赖真实点击即可走同一条重断言路径。</summary>
+    internal void RaiseForTest(string className = "Shell_TrayWnd") =>
+        ForegroundChanged?.Invoke(this, new ShellForegroundChangedEventArgs(className));
 
     private void OnForegroundChanged(
         IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
@@ -82,11 +87,12 @@ internal sealed class TaskbarForegroundWatcher : IDisposable
         }
 
         var className = GetClassName(hwnd);
-        if (className is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "TrayNotifyWnd")
+        if (className.Length == 0)
         {
-            AppLog.Info($"前台切换到任务栏（{className}），重新声明胶囊置顶。");
-            TaskbarActivated?.Invoke(this, EventArgs.Empty);
+            return;
         }
+
+        ForegroundChanged?.Invoke(this, new ShellForegroundChangedEventArgs(className));
     }
 
     private static string GetClassName(IntPtr hwnd)
@@ -110,4 +116,10 @@ internal sealed class TaskbarForegroundWatcher : IDisposable
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassNameW(IntPtr hwnd, StringBuilder className, int maxCount);
+}
+
+/// <summary>新前台窗口的类名；只用于日志和自检，不参与过滤。</summary>
+internal sealed class ShellForegroundChangedEventArgs(string className) : EventArgs
+{
+    public string ClassName { get; } = className;
 }

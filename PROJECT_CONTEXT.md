@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 5 已实现（任务栏置顶增强、开机自启、任务栏显示默认开启、历史持久化接入、独立统计窗口），等待用户验收** |
+| 当前阶段 | **阶段 5 已完成，5.1 遮挡缺陷（开始菜单/任务栏点击）与统计窗口深色标题栏已修复，等待用户验收** |
 | 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe 均不入解决方案 |
 | 未实现 | 统计窗口的周/月汇总（当前为今日/最近 7 天/单日）、程序图标提取（当前仅名称）、逐应用历史数据持久化（当前按查询日实时读 Windows API）、用户手动选择目标热点的 UI、睡眠/唤醒专项恢复编排 |
-| 下一次要做的事 | 用户验收阶段 5：重点看①自动适配时胶囊是否仍会被普通窗口/任务栏遮挡（被遮挡时点一下任务栏可触发恢复）、②设置里开机自启开关与注册表是否一致、③统计窗口数据与真实使用是否吻合、程序排行是否明确标注系统/未归属差额；验收后再决定阶段 6 |
+| 下一次要做的事 | 用户验收 5.1 修复：①点任务栏图标/空白后胶囊是否恢复可见；②Win 开始菜单关闭后胶囊是否自动恢复（展开期间被系统 band 6 覆盖属已知限制）；③统计窗口标题栏是否为深色且按钮/拖动正常；④确认后再决定阶段 6 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -208,13 +208,14 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 ### 阶段 5 实际结果（2026-11-14，任务栏层级 + 启动管理 + 统计窗口）
 
-- **5.1 任务栏层级**：新增 `TaskbarForegroundWatcher`（`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`，仅回调、不轮询），只在自动适配开启时启动；前台切换到任务栏窗口时重新 `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)`。自检实测 `watcher=True count=0->1 afterDisable=False`。
+- **5.1 任务栏层级**：`TaskbarForegroundWatcher` 已被 `ShellForegroundWatcher` 取代（旧文件删除），不再只匹配三个 Shell 类名，任何前台变化都触发；为避开任务栏随后的抬升动作，改为**每次前台事件只安排一次 250 ms 后的重断言**，仍无轮询。实机探针 `artifacts/shell-zorder-watcher2.log`：开始菜单展开时屏幕绿色像素 0（`bandCapsule=1`、`bandShell=6`，`SetWindowPos` 返回成功但无法跨 band）；Esc 关闭 1.5 s 后**未手工重断言**即恢复 `green=11309`、胶囊 z=16、任务栏 z=23；点击任务栏空白后 `green=11267`、胶囊 z=16。自检 `topmost.watcher=True count=0->1 afterDisable=False`（模拟类名 `Chrome_WidgetWin_1`，证明非 Shell 类名也走同一路径）。
 - **5.2 启动管理**：`StartupRegistrationService` 直接读写 HKCU Run（值名 `HotspotMeter`，带引号 exe 路径），默认不注册；自检实测 `NotRegistered → RegisteredForCurrentPath → 再次 Enable 仍单条 → Disable → NotRegistered`。`ShowStatsInTaskbar` 为 `bool?`，缺失按 true，显式 false 保留；自检实测设置即时作用于统计窗口。
 - **5.3 历史与逐程序**：新增 `TrafficHistoryStore`（10 s 检查点、稳定 ProfileKey、跨午夜切分、OperationId 去重、每日 SessionCount +1、启动时把遗留 Active 会话按最后检查点收尾）；`MonitorSessionService` 用串行任务链保证“先会话后快照”。逐程序走 WinRT `GetAttributedNetworkUsageAsync`（非打包进程可用），按 SSID+adapter 选 profile，桌面程序名称从路径派生，空归属单列“未归属流量（系统/服务）”，合计差额只展示不分摊。
 - **5.4 统计窗口**：托盘“流量统计”单实例打开，980×700 深色，今日/最近 7 天/指定日期、堆叠柱、程序排行（名称/上下行/总量/占比，分母为列表合计）、刷新与错误/不可用状态；关闭窗口后引擎继续采样（自检 `5->6`）。
 - **实测数据**：数据库 6 个会话、当日 `SessionCount=6`；`ConnectionSessions` 汇总 `10,431,015 / 14,377,165 B` 与 `DailyTraffic` 完全一致；快照分段求和一致。统计窗口真实显示“今日 23.66 MB”，程序 67 项，状态注明未归属差额 3.13 MB。
 - **验证**：`dotnet build` 0/0；`dotnet test` **390/390**（新增 5 个归属名称解析测试）；运行时自检 `artifacts/stage5-selftest2.txt`；统计窗口布局 `artifacts/stage5-stats3.txt`（`layout=ok texts=43`）与截图 `artifacts/stage5-stats3.png`。
-- **限制**：置顶无法绝对覆盖 UAC/安全桌面等系统界面；Windows 归属 API 有延迟且桌面程序 `AttributionName` 为空；逐程序数据未入库（每次按日期查询）；程序图标暂未提取；统计窗口周/月汇总未实现；未做 24 h 长跑与真实 Explorer 重启的人工验收。
+- **限制**：置顶无法绝对覆盖 UAC/安全桌面等系统界面；开始菜单/搜索展开期间 Shell 处于更高窗口 band（诊断读数 6），普通 `HWND_TOPMOST` 无法覆盖，关闭后才恢复；任务栏仅“显示/隐藏”而无前台变化时不会触发重断言；Windows 归属 API 有延迟且桌面程序 `AttributionName` 为空；逐程序数据未入库（每次按日期查询）；程序图标暂未提取；统计窗口周/月汇总未实现；未做 24 h 长跑与真实 Explorer 重启的人工验收。
+- **5.1 附加 UI（统计窗口标题栏）**：`StatsWindow` 在 `SourceInitialized` 调用现有 `DarkTitleBar.Apply`，标题栏 `#0B0B0C`、边框 `#26262A`、标题 `#F5F5F7`；实机屏幕采样（物理 1470×100）主色 `rgb(11,11,12)`，亮色文字/按钮像素 877；未改窗口尺寸、布局与三个系统按钮行为。
 
 ## 3. 文档索引与阅读顺序
 
@@ -252,6 +253,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 16. 3A 基础设施已被 101 项测试锁定：路径约束、PRAGMA（外键/WAL/忙等待）、迁移事务回滚与高版本拒绝、`quick_check` 损坏检测、四类文件整体隔离与失败不覆盖、单实例互斥、Writer 事务回滚/排空停止/100 并发串行/取消后可用。
 17. 4C-8 实测：本机 150% DPI、底部任务栏厚 48 DIP，自动尺寸为 135.4×44 DIP（最简密度、隐藏速度标签）；任务栏 60/120 DIP 分别得到 192.8×62.7（紧凑）与 320×104（正常）。
 18. 4C-9 实测：本机 150% DPI、任务栏 `0,1528,2560,1600`（48 DIP）时，自动定位结果为 `(120,1020.7)`，胶囊 135.4×44 完整落在任务栏内；垂直方向不能扣 8 DIP 边距，否则会被顶回任务栏上方。
+19. 5.1 实测：任务栏/开始菜单可被 Shell 提升到更高窗口 band（诊断读数：胶囊 1、SearchHost/任务栏 6）；band 6 期间 `SetWindowPos(HWND_TOPMOST)` 返回成功但无法覆盖。band 回落到 1 后，一次重断言即可恢复；前台事件后需延迟约 250 ms，等任务栏完成自身抬升，立即置顶会被覆盖。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -315,3 +317,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-13 | 阶段 4C-13：标签与数字统一 `Microsoft YaHei UI` + Bold，消除 CJK 逐字符回退与 SemiBold→Bold 错配；UiDump 增加字重/样式/字形覆盖断言；新增 D-082；提交 |
 | 2026-11-13 | 阶段 4C-14：自动适配任务栏时流量数字 ×1.18（最简档收窄水平内边距保证 renderScale=1.0），关闭立即恢复；修复 `SetSize` 倍率残留；UiDump 增加渲染尺寸诊断；新增 D-083；提交 |
 | 2026-11-14 | 阶段 5：任务栏置顶事件监听、HKCU 开机自启、任务栏显示默认开启、`TrafficHistoryStore` 持久化接入、WinRT 逐程序归属读取、独立统计窗口；390 项测试通过；新增 D-084～D-089；统一提交 |
+| 2026-11-14 | 阶段 5.1 修复：前台监听不再按 Shell 类名过滤，250 ms 后单次重断言；开始菜单展开期间受 band 6 限制、关闭后自动恢复；统计窗口接入 `DarkTitleBar`；390 测试通过；新增 D-090～D-092 |

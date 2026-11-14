@@ -1,4 +1,5 @@
 using System.Windows;
+using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
 
 namespace HotspotMeter.App.Views;
@@ -16,6 +17,7 @@ public partial class StatsWindow : Window
         InitializeComponent();
         _viewModel = viewModel;
         DataContext = viewModel;
+        SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
         Loaded += OnLoaded;
     }
 

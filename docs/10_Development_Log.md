@@ -1063,3 +1063,19 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 置顶不能覆盖 UAC/安全桌面；Explorer 重启恢复需人工复验。
 - 逐程序数据依赖 Windows 归属服务，存在延迟、历史缺行；未入库、未提取图标。
 - 统计窗口周/月聚合、程序图标、长跑与睡眠唤醒验收未做。
+
+## 2026-11-14 阶段 5.1 修复：开始菜单/任务栏遮挡与统计窗标题栏
+
+- 根因（实机探针，不是猜测）：
+  - 点击任务栏：旧 `TaskbarForegroundWatcher` 只匹配三个 Shell 类名；前台变成被激活的普通应用后事件不触发，
+    任务栏已把自己抬到胶囊之上。
+  - 开始菜单：`GetWindowBand` 显示胶囊 band=1、SearchHost/任务栏 band=6；`SetWindowPos(HWND_TOPMOST)` 返回成功
+    但无法跨 band 覆盖。开始菜单关闭后 band 回落，一次重断言即可恢复。
+- 修复：
+  - `TaskbarForegroundWatcher` → `ShellForegroundWatcher`，不按类名过滤；`CapsuleWindow` 每次前台变化只安排一次
+    250 ms 后的 `EnsureTopmost()`（`SWP_NOACTIVATE|NOMOVE|NOSIZE`），无轮询；关闭自动适配即停钩并停止计时器。
+  - `StatsWindow` 在 `SourceInitialized` 接入现有 `DarkTitleBar.Apply`，保留系统原生标题栏与三个按钮行为。
+- 测试：构建 0/0；`dotnet test` **390/390**；运行时自检 `artifacts/stage5-selftest-watcher.txt`；
+  Z 序/像素证据 `artifacts/shell-zorder-watcher2.log`（关闭开始菜单后 green 0→11,309，点任务栏空白 11,267）。
+- 限制：开始菜单/搜索展开期间受 band 6 限制，不能保证覆盖；UAC/锁屏不承诺；任务栏仅显示/隐藏无前台变化时不触发。
+- 文档：D-090～D-092、docs/02 §2.6、docs/03、docs/05 §14、docs/07 5.1 验收、PROJECT_CONTEXT。

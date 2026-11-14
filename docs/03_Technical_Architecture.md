@@ -184,7 +184,8 @@ public interface ISessionRepository
   启动收尾遗留会话；写入通过 Infrastructure 的 `SqliteWriter` 单消费者执行。
 - `App/Services/TrafficStatsService`：只读查询 `DailyTraffic`，按本地自然日返回 `DailyUsage`（缺失 != 0）。
 - `App/Services/AttributedUsageReader`：WinRT 逐程序归属；纯名称解析已下沉到 `Core/Usage/AttributionDisplayName`。
-- `App/Services/TaskbarForegroundWatcher`、`StartupRegistrationService`：Win32 事件钩子与 HKCU Run 注册。
+- `App/Services/ShellForegroundWatcher`、`StartupRegistrationService`：Win32 前台事件钩子（不按类名过滤；
+  每次前台变化只安排 250 ms 后单次重断言，避开任务栏随后的自身抬升）与 HKCU Run 注册。
 - `App/ViewModels/StatsViewModel` + `App/Views/StatsWindow`：统计窗口；由 `App.OpenStats()` 单实例管理。
 - 新增依赖边界：App 的 TFM 升为 `net10.0-windows10.0.26100.0` 才能引用 WinRT 网络归属 API；
   Core/Infrastructure/Tests 仍保持 `net10.0`，Core 不出现 Windows 类型。

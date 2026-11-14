@@ -133,3 +133,29 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 3. Explorer 重启（任务管理器重启资源管理器）后胶囊位置/层级恢复。
 4. 断开/重连热点、跨午夜、睡眠唤醒后统计窗口日期与总量是否正确。
 5. 长时间运行观察内存、句柄。
+
+## 阶段 5.1 补充修复验收（2026-11-14，开始菜单/任务栏遮挡 + 统计窗标题栏）
+
+自动化：
+- `dotnet build HotspotMeter.sln`：0 警告 0 错误。
+- `dotnet test HotspotMeter.sln --no-build`：**390 通过 / 0 失败 / 0 跳过**。
+- `HOTSPOTMETER_STAGE5_TEST=artifacts/stage5-selftest-watcher.txt`：
+  `topmost.watcher=True`、前台类名用 `Chrome_WidgetWin_1` 模拟仍触发一次（count `0->1`）、
+  关闭自动适配后 `afterDisable=False`；开机自启与任务栏显示开关状态保持预期。
+- Z 序探针 `tools/ShellZOrderProbe` → `artifacts/shell-zorder-watcher2.log`：
+  | 场景 | 绿色像素 | 结论 |
+  | --- | --- | --- |
+  | 基线（任务栏可见） | 0 | 被任务栏盖住 |
+  | 隐藏任务栏 | 11,311 | 证明遮挡层是任务栏 |
+  | 按 Win 打开开始菜单 | 0 | band 1 vs 6，无法覆盖 |
+  | Esc 关闭 1.5 s，未手工重断言 | 11,309 | 新监听自动恢复 |
+  | 点击任务栏空白 | 11,267 | 新监听自动恢复 |
+- 统计窗标题栏：`HOTSPOTMETER_UI_STATS` 实机截屏，标题栏主色 `rgb(11,11,12)`、边框 `rgb(38,38,42)`、
+  亮色文字/按钮像素 877；`docs/images/stage5-stats-dark-titlebar.png`。
+
+实机与模拟的边界：
+- “按 Win/点击任务栏/关闭开始菜单”由探针用 `SendInput`/`keybd_event` 真实发送到系统，属于实机交互；
+  但没有人工用鼠标逐项点击验收。
+- 开始菜单展开期间的遮挡是 Windows 11 Shell band 行为，不是代码可修复项；只能保证关闭后恢复。
+- 任务栏自动隐藏/恢复若没有前台变化，不会触发重断言；本轮未单独验收。
+- Explorer 重启、注销/登录、UAC/锁屏覆盖未做本轮人工验收。

@@ -34,7 +34,7 @@ public partial class CapsuleWindow : Window
     private readonly WindowStateStore _stateStore;
     private readonly Action _openSettings;
     private readonly TaskbarDetector _taskbarDetector = new();
-    private readonly TaskbarForegroundWatcher _foregroundWatcher = new();
+    private readonly ShellForegroundWatcher _foregroundWatcher = new();
     private CapsuleViewModel? _viewModel;
     private bool _positionRestored;
     private bool _autoFit;
@@ -45,6 +45,9 @@ public partial class CapsuleWindow : Window
     private uint _taskbarCreatedMessage;
     private string? _lastAnchorNote;
     private int _topmostReassertCount;
+    private DispatcherTimer? _foregroundReassertTimer;
+    private string _pendingForegroundClass = string.Empty;
+    private int _foregroundLogCount;
 
     public CapsuleWindow(WindowStateStore stateStore, Action openSettings)
     {
@@ -60,17 +63,24 @@ public partial class CapsuleWindow : Window
         Closed += OnClosed;
         Closing += (_, _) => PersistState();
 
-        _foregroundWatcher.TaskbarActivated += (_, _) =>
+        _foregroundWatcher.ForegroundChanged += (_, e) =>
         {
-            // 自动适配时胶囊位于任务栏带内，任务栏被点击后会把自身抬到置顶窗口之上；
-            // 这里只在前台确实变成任务栏时补一次 SWP_NOACTIVATE，不抢焦点、不轮询。
+            // 前台变化覆盖两种遮挡路径：
+            // 1) 点击任务栏图标：前台变成目标应用，任务栏把自己抬到胶囊之上；
+            // 2) 开始菜单关闭：Shell 的窗口 band 回落后，需要一次重断言把胶囊放回任务栏之上。
+            // 不能在前台事件里立刻 SetWindowPos：任务栏/开始菜单的抬升动作通常发生在这条
+            // 事件之后，立即置顶会被随后到达的 Shell Z 序操作覆盖。这里只安排一次 250 ms
+            // 后的事件驱动重断言，不做轮询；开始菜单仍展开时该调用无效（band 6），
+            // 关闭后下一次前台事件会再次安排。
             if (!_autoFit || !IsVisible)
             {
                 return;
             }
 
-            EnsureTopmost();
-            _topmostReassertCount++;
+            _pendingForegroundClass = e.ClassName;
+            _foregroundReassertTimer ??= CreateForegroundReassertTimer();
+            _foregroundReassertTimer.Stop();
+            _foregroundReassertTimer.Start();
         };
     }
 
@@ -318,7 +328,8 @@ public partial class CapsuleWindow : Window
 
     internal bool IsForegroundWatcherRunning => _foregroundWatcher.IsRunning;
 
-    internal void SimulateTaskbarActivatedForTest() => _foregroundWatcher.RaiseForTest();
+    internal void SimulateForegroundChangedForTest(string className = "Shell_TrayWnd") =>
+        _foregroundWatcher.RaiseForTest(className);
 
     /// <summary>最近一次任务栏检测输入（物理像素），供自检断言位置确实落在任务栏内。</summary>
     internal TaskbarLayoutInput? LastDetectionInput => _lastDetection?.Input;
@@ -464,6 +475,8 @@ public partial class CapsuleWindow : Window
     {
         _taskbarDebounce?.Stop();
         _taskbarDebounce = null;
+        _foregroundReassertTimer?.Stop();
+        _foregroundReassertTimer = null;
         _foregroundWatcher.Dispose();
 
         // 必须解钩：窗口重建或退出后继续响应消息会访问已释放的窗口。
@@ -520,6 +533,33 @@ public partial class CapsuleWindow : Window
     /// 胶囊仍能回到最上层，而且不会把焦点从用户正在用的程序抢走。
     /// 只在显示、尺寸变化、Explorer 重启等事件调用，不做定时器轮询。
     /// </summary>
+    private DispatcherTimer CreateForegroundReassertTimer()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!_autoFit || !IsVisible)
+            {
+                return;
+            }
+
+            EnsureTopmost();
+            _topmostReassertCount++;
+
+            // 只留少量样本：既能量化触发，又不会长期写盘（上限 12 条）。
+            if (_foregroundLogCount < 12)
+            {
+                _foregroundLogCount++;
+                AppLog.Info($"前台变化（{_pendingForegroundClass}）后重新声明胶囊置顶。");
+            }
+        };
+        return timer;
+    }
+
     private void EnsureTopmost()
     {
         var handle = new WindowInteropHelper(this).Handle;

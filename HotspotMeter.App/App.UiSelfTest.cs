@@ -509,8 +509,8 @@ public partial class App
             await Task.Delay(400);
             var reassertBefore = _capsule.TopmostReassertCount;
             var watcherRunning = _capsule.IsForegroundWatcherRunning;
-            _capsule.SimulateTaskbarActivatedForTest();
-            await Task.Delay(150);
+            _capsule.SimulateForegroundChangedForTest("Chrome_WidgetWin_1");
+            await Task.Delay(500);
             var reassertAfter = _capsule.TopmostReassertCount;
             _capsule.SetAutoFitTaskbar(false);
             await Task.Delay(250);
