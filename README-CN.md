@@ -1,13 +1,13 @@
 # HotspotMeter
 
-### Windows Hotspot Traffic Monitor
+### Windows 手机热点流量监控工具
 
-**Know your hotspot traffic at a glance.**
+**一眼掌握热点流量，轻松了解网络使用情况。**
 
-![Windows](https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
-![CSharp](https://img.shields.io/badge/Language-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
-![WPF](https://img.shields.io/badge/Framework-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
-![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
+![平台](https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
+![语言](https://img.shields.io/badge/开发语言-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
+![框架](https://img.shields.io/badge/开发框架-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
+![数据库](https://img.shields.io/badge/数据库-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
 **简体中文** | [English](README_EN.md)
 
