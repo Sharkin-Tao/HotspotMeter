@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Models;
 using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
@@ -64,6 +65,7 @@ public partial class CapsuleWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
         Closing += (_, _) => PersistState();
+        LocalizationService.Current.LanguageChanged += OnLanguageChanged;
 
         _foregroundWatcher.ForegroundChanged += (_, e) =>
         {
@@ -302,7 +304,7 @@ public partial class CapsuleWindow : Window
     {
         if (_viewModel?.IsPinned == true)
         {
-            _lastAnchorNote = "位置已固定，自动定位未执行。";
+            _lastAnchorNote = LocalizationService.T("Taskbar_AnchorPinnedSkipped");
             AppLog.Info("自动定位跳过：位置已固定。");
             return;
         }
@@ -364,14 +366,49 @@ public partial class CapsuleWindow : Window
     {
         var detection = _taskbarDetector.Detect(new WindowInteropHelper(this).Handle);
         _lastDetection = detection;
+        if (!detection.Succeeded)
+        {
+            return LocalizationService.F("Taskbar_DetectFailed", detection.Error ?? detection.Source);
+        }
+
+        var input = detection.Input;
         var fit = TaskbarSizingCalculator.Compute(new TaskbarSizingInput(
-            detection.Input.MonitorBounds,
-            detection.Input.WorkArea,
-            detection.Input.TaskbarRect,
-            detection.Input.Edge,
-            detection.Input.DpiScale));
+            input.MonitorBounds,
+            input.WorkArea,
+            input.TaskbarRect,
+            input.Edge,
+            input.DpiScale));
+
+        var dpi = input.DpiScale > 0 ? input.DpiScale : 1.0;
+        var edge = LocalizationService.T(input.Edge switch
+        {
+            TaskbarEdge.Top => "Taskbar_EdgeTop",
+            TaskbarEdge.Bottom => "Taskbar_EdgeBottom",
+            TaskbarEdge.Left => "Taskbar_EdgeLeft",
+            TaskbarEdge.Right => "Taskbar_EdgeRight",
+            _ => "Taskbar_EdgeUnknown",
+        });
+        var autoHide = input.AutoHide ? LocalizationService.T("Taskbar_AutoHide") : string.Empty;
+        var density = LocalizationService.T(fit.Density switch
+        {
+            CapsuleDensity.Normal => "Taskbar_DensityNormal",
+            CapsuleDensity.Compact => "Taskbar_DensityCompact",
+            _ => "Taskbar_DensityMinimal",
+        });
         var anchorNote = string.IsNullOrWhiteSpace(_lastAnchorNote) ? string.Empty : $" · {_lastAnchorNote}";
-        return $"{detection.Description} · {fit.Explanation}{anchorNote}";
+
+        return string.Format(
+            LocalizationService.Current.Culture,
+            LocalizationService.T("Taskbar_Status"),
+            edge,
+            dpi * 100,
+            input.WorkArea.Width / dpi,
+            input.WorkArea.Height / dpi,
+            autoHide,
+            fit.TaskbarThicknessDips,
+            fit.Width,
+            fit.Height,
+            density) + anchorNote;
     }
 
     /// <summary>开发期自检：用合成任务栏几何验证窗口尺寸会被自动调整，而不依赖真实任务栏。</summary>
@@ -485,11 +522,14 @@ public partial class CapsuleWindow : Window
         _foregroundReassertTimer?.Stop();
         _foregroundReassertTimer = null;
         _foregroundWatcher.Dispose();
+        LocalizationService.Current.LanguageChanged -= OnLanguageChanged;
 
         // 必须解钩：窗口重建或退出后继续响应消息会访问已释放的窗口。
         _hwndSource?.RemoveHook(WndProc);
         _hwndSource = null;
     }
+
+    private void OnLanguageChanged() => _viewModel?.RefreshLanguage();
 
     public void SetPinned(bool pinned)
     {

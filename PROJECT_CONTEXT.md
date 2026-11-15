@@ -1,4 +1,4 @@
-﻿# PROJECT_CONTEXT.md — HotspotMeter 知识库入口
+# PROJECT_CONTEXT.md — HotspotMeter 知识库入口
 
 > 每次开始任务先读本文件，再按任务读取对应文档。
 > 本文件只做导航、状态与"事实/假设"清单，详细内容在 `docs/` 下。
@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 6 已完成：发布前全面审查、低风险修复、Release 验证与交接准备，等待用户验收** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置；阶段 6 修复见下方“阶段 6 实际结果”；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe、ShellZOrderProbe 均不入解决方案 |
+| 当前阶段 | **阶段 6 已完成；中英双语（首次启动选择、设置/统计/胶囊/托盘即时切换）已实现（2026-11-15），等待用户验收** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置 + 中英双语 + 首次启动语言选择；阶段 6 修复见下方“阶段 6 实际结果”，国际化见“中英双语实际结果”；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe、ShellZOrderProbe 均不入解决方案 |
 | 未实现 | 周/月汇总（当前今日/最近 7 天/单日）、程序图标提取、逐应用历史数据持久化（按查询日实时读 Windows API）、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装包与发布流程（阶段 7） |
-| 下一次要做的事 | 用户验收 Debug 程序：①胶囊/统计窗口/托盘/设置正常；②统计窗口只汇总目标热点；③退出不再固定卡 3 秒；④托盘在 Explorer 重启后能恢复（需人工）；⑤查看统计窗口深色标题栏。确认后进入阶段 7 打包与发布准备 |
+| 下一次要做的事 | 用户验收中英双语：①删除/备份 `ui-state.json` 的 `Language` 后启动，应出现语言选择窗；②选择 English 后检查设置/统计/胶囊/托盘；③运行中在设置里切换语言，所有已开窗口即时变化；④重启后不再弹选择窗。验收后进入阶段 7 打包与发布准备 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -234,6 +234,15 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **构建/测试**：Debug、Release 均 0 警告 0 错误；`dotnet test` **390/390**（Debug 与 Release）。
 - **已知未解决**：WLAN 查询永久失败时不会自动重开句柄（仅目标未识别会重试）；采样间隔 >3 s 仍按睡眠处理，会丢该段字节；`ResumeAsync` 并发边角未覆盖；单实例使用 `Local\` 且清扫不按 RunId 过滤，同用户双会话可能互踩；无 `PowerModeChanged` 睡前检查点；Alt+F4 关闭胶囊后从托盘“显示”可能对已关闭窗口调 `Show()`；Explorer 重启后的托盘恢复只做了代码级实现，尚未人工实测。
 
+### 中英双语实际结果（2026-11-15，首次启动选择 + 全局即时切换）
+
+- **目标**：首次启动可选择中文/English 并记住；设置、统计、胶囊、托盘菜单、运行期提示同步切换，不重启、不减少既有功能。
+- **资源层**：`HotspotMeter.Core/Localization/LanguageCatalog.cs` 用两套并排字典（约 120 键）而非 XAML 资源字典，使 Core/Infrastructure 也能取词，并可用单测强制中英键集合与占位符一致；`LocalizationService` 提供单例索引器、`T/F`、`LanguageChanged`；XAML 用 `{loc:Tr Key}` 绑定实时刷新。
+- **首次启动**：`App.OnStartup` 先读 `ui-state.json` 的 `Language`；有效则直接使用，缺失/非法则先单实例、再弹 `LanguageWindow`（460×340 深色双语卡片）。取消/关闭直接退出且**不写入**语言；选择后写入现有配置、切换文化并重新加载。选择发生在主窗口创建前，无中文闪烁。
+- **设置/统计/胶囊/托盘**：设置窗新增“语言”卡（780×700），全部静态与状态文案资源化；统计窗 44 条文本、图表/悬停/表头/空错状态全部资源化；胶囊标签、速度标签、右键菜单、固定文字、上次会话前缀资源化；托盘菜单改为 `ApplyLanguage()` 就地更新文本后 `Refresh()`。
+- **验证**：构建 0/0；`dotnet test` **408/408**（含 18 个本地化用例）。UIAutomation 首次启动选择 English 后配置写入 `en-US`；英文设置窗 `layout=ok texts=26`、英文统计窗 `layout=ok texts=44`、英文胶囊四档/自定义 `layout=ok`、菜单 `Traffic Statistics | Lock Position | Resize… | Exit`；运行中中英互切即时生效；取消语言窗进程退出且配置无 `Language`。证据见 `artifacts/i18n-*.txt/png`。
+- **限制**：本会话视觉引擎不可用，英文界面靠 UIAutomation/布局断言/像素验证，未人工肉眼终检；托盘菜单英文未实际展开（图标在隐藏区），仅代码与 `MenuItemTexts` 级验证；自动适配最简档按设计隐藏说明标签。详见 `docs/11_Localization.md`。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -249,6 +258,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 | [docs/08_Development_Roadmap.md](docs/08_Development_Roadmap.md) | 阶段 0–7 的目标与退出标准 | 规划下一步 |
 | [docs/09_Decisions.md](docs/09_Decisions.md) | 架构决策记录（ADR） | 想改已有选择前 |
 | [docs/10_Development_Log.md](docs/10_Development_Log.md) | 每次工作的操作与结果 | 接手/复盘 |
+| [docs/11_Localization.md](docs/11_Localization.md) | 中英资源组织、切换机制、配置与维护方式 | 改任何界面文字前 |
 
 ## 4. 已确认的事实（可依赖）
 
@@ -275,6 +285,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 21. 阶段 6 修复了一个真实运行时缺陷：`CloseAbandonedSessionsAsync` 的 SQL 中误写 C# 注释 `//`，导致每次启动历史库初始化失败（`SQLite Error 1: near "/": syntax error`）；改为 SQL 的 `--` 后恢复。纯构建/单测无法发现，必须启动并查 `app.log`。
 22. 阶段 6 统计口径已验证：统计查询按当前目标热点 `ProfileKey` 过滤；逐程序合计与总量差额只解释为“未归属/系统”，不做分摊。
 23. 阶段 6 Release `dotnet clean/build -c Release` 0 警告 0 错误，`dotnet test -c Release --no-build` 390/390；Debug 同。
+24. 中英双语（2026-11-15）已实现并验证：首次无 `Language` 时弹选择窗，选择写入 `ui-state.json`；取消不写；非法值按未选择处理并回退 zh-CN；运行中切换设置/统计/胶囊/托盘即时生效；`dotnet test` 408/408。英文界面经 UIAutomation/布局断言/像素验证，未人工目检。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -340,3 +351,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-14 | 阶段 5：任务栏置顶事件监听、HKCU 开机自启、任务栏显示默认开启、`TrafficHistoryStore` 持久化接入、WinRT 逐程序归属读取、独立统计窗口；390 项测试通过；新增 D-084～D-089；统一提交 |
 | 2026-11-14 | 阶段 5.1 修复：前台监听不再按 Shell 类名过滤，250 ms 后单次重断言；开始菜单展开期间受 band 6 限制、关闭后自动恢复；统计窗口接入 `DarkTitleBar`；390 测试通过；新增 D-090～D-092 |
 | 2026-11-14 | 阶段 6：发布前审查与加固（退出死锁、统计按 ProfileKey 过滤、DB 健康分类、synchronous=FULL、统计竞态取消、托盘 TaskbarCreated、原子配置、设置窗夹取、目标热点重试、SQL 注释运行时缺陷）；Debug/Release 390 测试通过；新增 D-093～D-099 |
+| 2026-11-15 | 中英双语：`LanguageCatalog`/`LocalizationService`/`{loc:Tr}`、首次启动语言选择窗、`ui-state.Language`、设置/统计/胶囊/托盘即时切换；408 测试通过；新增 D-100～D-103、docs/11 |

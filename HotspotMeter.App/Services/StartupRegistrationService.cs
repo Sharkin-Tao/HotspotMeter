@@ -1,4 +1,5 @@
 using System.IO;
+using HotspotMeter.App.Localization;
 using Microsoft.Win32;
 
 namespace HotspotMeter.App.Services;
@@ -83,13 +84,13 @@ public sealed class StartupRegistrationService
     {
         if (string.IsNullOrWhiteSpace(_executablePath))
         {
-            return new StartupRegistration(StartupRegistrationState.Unknown, null, "无法确定当前程序路径。");
+            return new StartupRegistration(StartupRegistrationState.Unknown, null, LocalizationService.T("Startup_ErrorNoPath"));
         }
 
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true)
-                ?? throw new IOException("无法打开当前用户启动项注册表。");
+                ?? throw new IOException(LocalizationService.T("Startup_ErrorNoRegistry"));
 
             if (key.GetValue(ValueName) is string existing &&
                 !string.IsNullOrWhiteSpace(existing) &&
@@ -98,7 +99,7 @@ public sealed class StartupRegistrationService
                 return new StartupRegistration(
                     StartupRegistrationState.RegisteredForOtherPath,
                     existing,
-                    "同名启动项属于其他程序，未覆盖。请先手动处理该项。");
+                    LocalizationService.T("Startup_ErrorOtherProgram"));
             }
 
             var command = Quote(_executablePath);
@@ -130,7 +131,7 @@ public sealed class StartupRegistrationService
                 return new StartupRegistration(
                     StartupRegistrationState.RegisteredForOtherPath,
                     existing,
-                    "同名启动项不属于 HotspotMeter，未删除。");
+                    LocalizationService.T("Startup_ErrorNotOurs"));
             }
 
             key.DeleteValue(ValueName, throwOnMissingValue: false);

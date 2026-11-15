@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
 
@@ -31,7 +32,19 @@ public partial class SettingsWindow : Window
             ClampWindowSize();
             RestorePosition();
         };
-        Closed += (_, _) => PersistPosition();
+        Closed += (_, _) =>
+        {
+            LocalizationService.Current.LanguageChanged -= OnLanguageChanged;
+            PersistPosition();
+        };
+
+        LocalizationService.Current.LanguageChanged += OnLanguageChanged;
+    }
+
+    private void OnLanguageChanged()
+    {
+        // XAML 静态文字由 TrExtension 自行刷新；VM 生成的尺寸/状态文案需要重建。
+        _viewModel.Refresh(keepSizeInputs: Keyboard.FocusedElement is TextBox);
     }
 
     protected override void OnActivated(EventArgs e)

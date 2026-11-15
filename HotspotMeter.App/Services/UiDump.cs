@@ -284,7 +284,8 @@ internal static class UiDump
         var upload = rows.FirstOrDefault(r => r.Text.Contains('↑'));
         var stacked = download.Rect.Height > 0 && upload.Rect.Height > 0 &&
                       download.Rect.Top < upload.Rect.Top;
-        var labelsVisible = rows.Any(r => r.Text.Contains("下载", StringComparison.Ordinal));
+        var labelsVisible = rows.Any(r => r.Text.Contains("下载", StringComparison.Ordinal)
+                                          || r.Text.Equals("Down", StringComparison.OrdinalIgnoreCase));
         var inside = blockBounds.Left >= -0.5 && blockBounds.Top >= -0.5 &&
                      blockBounds.Right <= window.ActualWidth + 0.5 &&
                      blockBounds.Bottom <= window.ActualHeight + 0.5;
@@ -306,8 +307,9 @@ internal static class UiDump
             .Where(t => !string.IsNullOrEmpty(t))
             .ToList();
 
-        var statusPresent = texts.Any(t => t is "已连接" or "未连接");
-        var captionPresent = texts.Any(t => t.Contains("已使用流量", StringComparison.Ordinal));
+        var statusPresent = texts.Any(t => t is "已连接" or "未连接" or "Connected" or "Disconnected");
+        var captionPresent = texts.Any(t => t.Contains("已使用流量", StringComparison.Ordinal)
+                                            || t.Contains("Data used", StringComparison.Ordinal));
         var hasWifiPath = FindDescendants<System.Windows.Shapes.Path>(window).Any();
         var trafficFont = window.FindName("TrafficValue") is TextBlock traffic ? traffic.FontSize : 0;
         var speedFont = window.FindName("SpeedBlock") is FrameworkElement block

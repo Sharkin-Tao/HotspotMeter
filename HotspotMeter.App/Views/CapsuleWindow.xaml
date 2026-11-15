@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:HotspotMeter.App.ViewModels"
+        xmlns:loc="clr-namespace:HotspotMeter.App.Localization"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -46,12 +47,12 @@
                 <Style TargetType="MenuItem" BasedOn="{StaticResource CapsuleMenuItemStyle}" />
                 <Style TargetType="Separator" BasedOn="{StaticResource CapsuleMenuSeparatorStyle}" />
             </ContextMenu.Resources>
-            <MenuItem Header="流量统计" Click="OnOpenStats" />
+            <MenuItem Header="{loc:Tr Capsule_MenuStats}" Click="OnOpenStats" />
             <Separator />
             <MenuItem Header="{Binding PinMenuText}" Click="OnTogglePin" />
-            <MenuItem Header="调整大小…" Click="OnOpenSizeSettings" />
+            <MenuItem Header="{loc:Tr Capsule_MenuResize}" Click="OnOpenSizeSettings" />
             <Separator />
-            <MenuItem Header="退出程序" Click="OnExit" />
+            <MenuItem Header="{loc:Tr Capsule_MenuExit}" Click="OnExit" />
         </ContextMenu>
     </Window.ContextMenu>
 
@@ -70,7 +71,7 @@
         -->
         <StackPanel Margin="{Binding CapsuleContentMargin}" VerticalAlignment="Center">
             <TextBlock x:Name="TrafficCaption"
-                       Text="已使用流量"
+                       Text="{loc:Tr Capsule_Caption}"
                        FontFamily="{StaticResource TrafficFontFamily}"
                        FontSize="{Binding CaptionFontSize}" FontWeight="Bold"
                        Foreground="{StaticResource TextSecondary}"
@@ -112,7 +113,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="↓" FontSize="{Binding SpeedFontSize}" Foreground="#D9FFFFFF"
                                Margin="{Binding SpeedArrowMargin}" />
-                    <TextBlock Grid.Column="1" Text="下载" FontSize="{Binding SpeedFontSize}" Foreground="#CCFFFFFF"
+                    <TextBlock Grid.Column="1" Text="{loc:Tr Capsule_Download}" FontSize="{Binding SpeedFontSize}" Foreground="#CCFFFFFF"
                                Margin="{Binding SpeedLabelMargin}"
                                Visibility="{Binding ShowSpeedLabels, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Grid.Column="2" Text="{Binding DownloadText}" FontSize="{Binding SpeedFontSize}" Foreground="White" />
@@ -125,7 +126,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="↑" FontSize="{Binding SpeedFontSize}" Foreground="#D9FFFFFF"
                                Margin="{Binding SpeedArrowMargin}" />
-                    <TextBlock Grid.Column="1" Text="上传" FontSize="{Binding SpeedFontSize}" Foreground="#CCFFFFFF"
+                    <TextBlock Grid.Column="1" Text="{loc:Tr Capsule_Upload}" FontSize="{Binding SpeedFontSize}" Foreground="#CCFFFFFF"
                                Margin="{Binding SpeedLabelMargin}"
                                Visibility="{Binding ShowSpeedLabels, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Grid.Column="2" Text="{Binding UploadText}" FontSize="{Binding SpeedFontSize}" Foreground="White" />

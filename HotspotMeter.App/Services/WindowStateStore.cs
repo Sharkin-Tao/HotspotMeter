@@ -49,6 +49,12 @@ public sealed class CapsuleWindowState
     /// 但不能覆盖用户已经显式保存的 false。
     /// </summary>
     public bool? ShowStatsInTaskbar { get; set; }
+
+    /// <summary>
+    /// 界面语言（zh-CN / en-US）。旧版配置没有该字段，表示用户尚未选择；
+    /// 首次启动需要显示语言选择窗口，而不是静默采用中文。
+    /// </summary>
+    public string? Language { get; set; }
 }
 
 /// <summary>

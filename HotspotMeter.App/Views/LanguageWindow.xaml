@@ -1,0 +1,109 @@
+<Window x:Class="HotspotMeter.App.Views.LanguageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HotspotMeter"
+        Width="460" Height="340"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgApp}"
+        Foreground="{StaticResource TextPrimary}"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+
+    <Window.Resources>
+        <Style x:Key="LanguageOptionButton" TargetType="Button">
+            <Setter Property="Width" Value="188" />
+            <Setter Property="Height" Value="112" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource AccentGreen}" />
+                                <Setter TargetName="Surface" Property="Background" Value="{StaticResource BgHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource AccentGreen}" />
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="32,26,32,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Welcome to HotspotMeter"
+                   FontSize="22" FontWeight="SemiBold" />
+        <TextBlock Grid.Row="1" Text="欢迎使用 HotspotMeter"
+                   FontSize="14" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+
+        <TextBlock Grid.Row="2" Margin="0,18,0,0" FontSize="12"
+                   Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap">
+            <Run Text="Choose your language to get started." />
+            <LineBreak />
+            <Run Text="选择语言以开始使用。" />
+        </TextBlock>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,18,0,10">
+            <Button Style="{StaticResource LanguageOptionButton}" Click="OnSelectChinese" IsDefault="True"
+                    AutomationProperties.Name="简体中文 / Simplified Chinese">
+                <StackPanel HorizontalAlignment="Center">
+                    <Border Width="38" Height="38" CornerRadius="19" Background="{StaticResource BgApp}"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="中" FontSize="16" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="简体中文" FontSize="15" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,10,0,0" />
+                    <TextBlock Text="Simplified Chinese" FontSize="11"
+                               Foreground="{StaticResource TextSecondary}"
+                               HorizontalAlignment="Center" Margin="0,3,0,0" />
+                </StackPanel>
+            </Button>
+
+            <Button Style="{StaticResource LanguageOptionButton}" Click="OnSelectEnglish" Margin="12,0,0,0"
+                    AutomationProperties.Name="English / 英文">
+                <StackPanel HorizontalAlignment="Center">
+                    <Border Width="38" Height="38" CornerRadius="19" Background="{StaticResource BgApp}"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="EN" FontSize="14" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="English" FontSize="15" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,10,0,0" />
+                    <TextBlock Text="English (US)" FontSize="11"
+                               Foreground="{StaticResource TextSecondary}"
+                               HorizontalAlignment="Center" Margin="0,3,0,0" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <TextBlock Grid.Row="4" Text="You can change this later in Settings.   之后可在“设置”中随时更改。"
+                   FontSize="11" Foreground="{StaticResource TextTertiary}" TextWrapping="Wrap" />
+    </Grid>
+</Window>

@@ -1,3 +1,4 @@
+using HotspotMeter.App.Localization;
 using HotspotMeter.Core.Usage;
 using Windows.Networking.Connectivity;
 
@@ -49,7 +50,7 @@ public sealed class AttributedUsageReader
             var profile = FindProfile(adapterId, ssid);
             if (profile is null)
             {
-                return AttributedUsageResult.Unavailable("未找到当前热点对应的 Windows 连接配置。");
+                return AttributedUsageResult.Unavailable(LocalizationService.T("Stats_NoProfile"));
             }
 
             var start = date.ToDateTime(TimeOnly.MinValue);
@@ -86,14 +87,18 @@ public sealed class AttributedUsageReader
                 .ToArray();
 
             var status = programs.Length == 0
-                ? "系统没有返回逐应用数据（可能尚未生成归属统计）。"
-                : $"系统归属数据：{programs.Length} 项；未归属差额 {FormatBytes(Math.Max(0, totalDown + totalUp - programs.Sum(p => p.TotalBytes)))}。";
+                ? LocalizationService.T("Stats_NoAttribution")
+                : LocalizationService.F(
+                    "Stats_AttributionSummary",
+                    programs.Length,
+                    FormatBytes(Math.Max(0, totalDown + totalUp - programs.Sum(p => p.TotalBytes))));
 
             return new AttributedUsageResult(true, status, totalDown, totalUp, programs);
         }
         catch (Exception ex)
         {
-            return AttributedUsageResult.Unavailable($"逐应用流量不可用：{ex.Message}");
+            return AttributedUsageResult.Unavailable(
+                LocalizationService.F("Stats_Unavailable", ex.Message));
         }
     }
 

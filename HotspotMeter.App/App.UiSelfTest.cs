@@ -51,7 +51,7 @@ public partial class App
                 _capsule.ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>()
                     .Select(i => $"{i.Header}{(i.IsEnabled ? string.Empty : "(禁用)")}"));
             log.AppendLine($"capsule.menu={capsuleMenu}");
-            log.AppendLine($"capsule.menuHasSettings={capsuleMenu.Contains("设置", StringComparison.Ordinal)}");
+            log.AppendLine($"capsule.menuHasSettings={capsuleMenu.Contains("设置", StringComparison.Ordinal) || capsuleMenu.Contains("Settings", StringComparison.Ordinal)}");
 
             // 右键菜单真实打开/关闭循环：4C-2 的闪退发生在菜单首次布局时
             // （MenuItem 样式被套到 Separator 上），这里直接驱动同一条路径。
@@ -418,6 +418,31 @@ public partial class App
         }
 
         Shutdown();
+    }
+
+    /// <summary>打开真实设置窗口，等待布局完成后写文本边界；用于英文界面验收。</summary>
+    internal async Task RunSettingsDumpAsync(string outputPath)
+    {
+        await Task.Delay(900);
+        OpenSettings();
+        await Task.Delay(700);
+
+        var builder = new StringBuilder();
+        builder.AppendLine(UiDump.Describe(_settingsWindow!));
+        builder.AppendLine(UiDump.CheckLayout(_settingsWindow!));
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
+        File.WriteAllText(outputPath, builder.ToString());
+
+        var pngPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_SETTINGS_PNG");
+        if (!string.IsNullOrWhiteSpace(pngPath))
+        {
+            UiDump.SavePng(_settingsWindow!, pngPath);
+        }
+
+        if (Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_DUMP_EXIT") == "1")
+        {
+            Shutdown();
+        }
     }
 
     /// <summary>

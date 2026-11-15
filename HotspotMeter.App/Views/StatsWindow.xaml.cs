@@ -1,4 +1,5 @@
 using System.Windows;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
 
@@ -20,9 +21,16 @@ public partial class StatsWindow : Window
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
 
         // 关闭窗口时取消仍在进行的查询，避免旧结果回到已关闭的 ViewModel。
-        Closed += (_, _) => _viewModel.Cancel();
+        Closed += (_, _) =>
+        {
+            LocalizationService.Current.LanguageChanged -= OnLanguageChanged;
+            _viewModel.Cancel();
+        };
+        LocalizationService.Current.LanguageChanged += OnLanguageChanged;
         Loaded += OnLoaded;
     }
+
+    private void OnLanguageChanged() => _viewModel.RefreshLanguage();
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

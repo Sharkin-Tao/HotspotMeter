@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using HotspotMeter.App.Localization;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
 
@@ -17,6 +18,7 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.ToolStripMenuItem _hideItem;
     private readonly Forms.ToolStripMenuItem _settingsItem;
     private readonly Forms.ToolStripMenuItem _statsItem;
+    private readonly Forms.ToolStripMenuItem _exitItem;
     private readonly Func<bool> _isCapsuleVisible;
     private readonly TrayMessageWindow _messageWindow;
     private bool _disposed;
@@ -42,11 +44,11 @@ public sealed class TrayIconService : IDisposable
             Font = Drawing.SystemFonts.MenuFont,
         };
 
-        _statsItem = CreateItem("流量统计", openStats);
-        _settingsItem = CreateItem("设置", openSettings);
-        _showItem = CreateItem("显示悬浮胶囊", showCapsule);
-        _hideItem = CreateItem("隐藏悬浮胶囊", hideCapsule);
-        var exitItem = CreateItem("退出程序", exit);
+        _statsItem = CreateItem(LocalizationService.T("Tray_Stats"), openStats);
+        _settingsItem = CreateItem(LocalizationService.T("Tray_Settings"), openSettings);
+        _showItem = CreateItem(LocalizationService.T("Tray_Show"), showCapsule);
+        _hideItem = CreateItem(LocalizationService.T("Tray_Hide"), hideCapsule);
+        _exitItem = CreateItem(LocalizationService.T("Tray_Exit"), exit);
 
         _menu.Items.Add(_statsItem);
         _menu.Items.Add(_settingsItem);
@@ -54,7 +56,8 @@ public sealed class TrayIconService : IDisposable
         _menu.Items.Add(_showItem);
         _menu.Items.Add(_hideItem);
         _menu.Items.Add(new Forms.ToolStripSeparator());
-        _menu.Items.Add(exitItem);
+        _menu.Items.Add(_exitItem);
+        LocalizationService.Current.LanguageChanged += ApplyLanguage;
 
         // 打开菜单时再决定可用性，保证与胶囊真实可见状态一致。
         _menu.Opening += (_, _) =>
@@ -105,6 +108,17 @@ public sealed class TrayIconService : IDisposable
         return item;
     }
 
+    /// <summary>语言切换后更新已存在的菜单项；不清空菜单，避免丢失点击处理与顺序。</summary>
+    private void ApplyLanguage()
+    {
+        _statsItem.Text = LocalizationService.T("Tray_Stats");
+        _settingsItem.Text = LocalizationService.T("Tray_Settings");
+        _showItem.Text = LocalizationService.T("Tray_Show");
+        _hideItem.Text = LocalizationService.T("Tray_Hide");
+        _exitItem.Text = LocalizationService.T("Tray_Exit");
+        _menu.Refresh();
+    }
+
     /// <summary>供开发期自检读取托盘状态与菜单结构。</summary>
     public bool IsVisible => _notifyIcon.Visible;
 
@@ -125,6 +139,7 @@ public sealed class TrayIconService : IDisposable
         }
 
         _disposed = true;
+        LocalizationService.Current.LanguageChanged -= ApplyLanguage;
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _messageWindow.Dispose();

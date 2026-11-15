@@ -1,3 +1,5 @@
+using HotspotMeter.App.Localization;
+
 namespace HotspotMeter.App.Models;
 
 /// <summary>
@@ -42,13 +44,13 @@ public readonly record struct CapsuleSize(double Width, double Height)
 
         if (double.IsNaN(width) || double.IsInfinity(width) || width < MinWidth || width > MaxWidth)
         {
-            error = $"宽度需在 {MinWidth:0}–{MaxWidth:0} DIP 之间。";
+            error = LocalizationService.F("Settings_ErrorWidthRange", MinWidth, MaxWidth);
             return false;
         }
 
         if (double.IsNaN(height) || double.IsInfinity(height) || height < MinHeight || height > MaxHeight)
         {
-            error = $"高度需在 {MinHeight:0.#}–{MaxHeight:0.#} DIP 之间（宽度 {width:0} 对应 {width * DefaultHeight / DefaultWidth:0.#}）。";
+            error = LocalizationService.F("Settings_ErrorHeightRange", MinHeight, MaxHeight, width, width * DefaultHeight / DefaultWidth);
             return false;
         }
 
@@ -56,8 +58,7 @@ public readonly record struct CapsuleSize(double Width, double Height)
         var ratio = width / height;
         if (Math.Abs(ratio - AspectRatio) / AspectRatio > AspectTolerance)
         {
-            error = $"宽高比需保持 320 : 104（约 3.08 : 1）。当前 {width:0.#} × {height:0.#}，" +
-                    $"请把高度改为 {expectedHeight:0.#}，或把宽度改为 {height * DefaultWidth / DefaultHeight:0.#}。";
+            error = LocalizationService.F("Settings_ErrorAspect", expectedHeight, height * DefaultWidth / DefaultHeight);
             return false;
         }
 

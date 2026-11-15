@@ -1,8 +1,10 @@
 using System.Windows;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Models;
 using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
 using HotspotMeter.App.Views;
+using HotspotMeter.Core.Localization;
 using HotspotMeter.Infrastructure.SingleInstance;
 
 namespace HotspotMeter.App;
@@ -39,11 +41,19 @@ public partial class App : Application, ISettingsHost
         TaskScheduler.UnobservedTaskException += (_, args) =>
             CrashLog.Write(args.Exception, "UnobservedTaskException");
 
+        // 胶囊/设置窗口关闭后不得退出程序；退出只由托盘或胶囊菜单触发。
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        // 语言必须先于单实例提示和任何窗口创建确定，否则第二个实例会先用旧语言弹提示。
+        var saved = _stateStore.Load();
+        var hasLanguage = LanguageCatalog.TryNormalize(saved?.Language, out var savedLanguage);
+        LocalizationService.Current.SetLanguage(hasLanguage ? savedLanguage : LanguageCatalog.ChineseSimplified);
+
         _singleInstance = SingleInstanceGuard.TryAcquire();
         if (_singleInstance is null)
         {
             MessageBox.Show(
-                "HotspotMeter 已在运行。请从系统托盘图标打开设置或显示悬浮胶囊。",
+                LocalizationService.T("App_AlreadyRunning"),
                 "HotspotMeter",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -51,10 +61,22 @@ public partial class App : Application, ISettingsHost
             return;
         }
 
-        // 胶囊/设置窗口关闭后不得退出程序；退出只由托盘或胶囊菜单触发。
-        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (!hasLanguage)
+        {
+            var picker = new LanguageWindow();
+            if (picker.ShowDialog() != true || string.IsNullOrWhiteSpace(picker.SelectedLanguage))
+            {
+                // 用户直接关闭选择窗口：视为放弃启动，不写入任何语言值。
+                Shutdown();
+                return;
+            }
 
-        var saved = _stateStore.Load();
+            _stateStore.Update(state => state.Language = picker.SelectedLanguage);
+            LocalizationService.Current.SetLanguage(picker.SelectedLanguage);
+            saved = _stateStore.Load();
+            AppLog.Info($"已保存首次启动语言：{picker.SelectedLanguage}");
+        }
+
         var startSize = CapsuleSize.FromPersisted(saved?.Width, saved?.Height);
         var showCapsule = saved?.ShowCapsuleOnStartup ?? true;
 
@@ -110,6 +132,13 @@ public partial class App : Application, ISettingsHost
         if (!string.IsNullOrWhiteSpace(statsDumpPath))
         {
             _ = RunStatsDumpAsync(statsDumpPath);
+        }
+
+        // 开发期设置窗口抓取入口，用于验证英文布局与实际渲染。
+        var settingsDumpPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_SETTINGS");
+        if (!string.IsNullOrWhiteSpace(settingsDumpPath))
+        {
+            _ = RunSettingsDumpAsync(settingsDumpPath);
         }
 
         // 阶段 5 运行时验收：会真实写 HKCU Run 并恢复原状态，只在显式请求时执行。
@@ -199,23 +228,36 @@ public partial class App : Application, ISettingsHost
             // 写注册表失败时，单纯回读只会显示“未开启”，用户不知道失败原因。
             if (_lastStartupWrite is { State: StartupRegistrationState.Unknown } failed)
             {
-                return $"启动项写入失败：{failed.Error}";
+                return string.Format(LocalizationService.Current.Culture, LocalizationService.T("Startup_WriteFailed"), failed.Error);
             }
 
             var registration = _startupRegistration.Read();
             return registration.State switch
             {
-                StartupRegistrationState.RegisteredForCurrentPath => "已开启：登录 Windows 时会自动启动当前程序。",
-                StartupRegistrationState.NotRegistered => "未开启。开启后会在当前用户登录时自动启动。",
+                StartupRegistrationState.RegisteredForCurrentPath => LocalizationService.T("Startup_Registered"),
+                StartupRegistrationState.NotRegistered => LocalizationService.T("Startup_NotRegistered"),
                 StartupRegistrationState.RegisteredForOtherPath =>
-                    $"启动项指向其他路径，未自动覆盖：{registration.Command}",
-                _ => $"读取启动项失败：{registration.Error}",
+                    string.Format(LocalizationService.Current.Culture, LocalizationService.T("Startup_OtherPath"), registration.Command),
+                _ => string.Format(LocalizationService.Current.Culture, LocalizationService.T("Startup_ReadFailed"), registration.Error),
             };
         }
     }
 
     /// <summary>旧配置没有该字段时默认 true；显式保存的 false 必须保留。</summary>
     public bool ShowStatsInTaskbar => _stateStore.GetOrCreate().ShowStatsInTaskbar ?? true;
+
+    public string CurrentLanguage => LocalizationService.Current.Language;
+
+    public void SetLanguage(string language)
+    {
+        if (!LocalizationService.Current.SetLanguage(language))
+        {
+            return;
+        }
+
+        _stateStore.Update(state => state.Language = LocalizationService.Current.Language);
+        AppLog.Info($"界面语言切换为 {LocalizationService.Current.Language}");
+    }
 
     public void SetAutoStart(bool enabled)
     {

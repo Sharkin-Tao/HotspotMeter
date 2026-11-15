@@ -207,6 +207,18 @@
 - 实机屏幕采样：标题栏主色 `rgb(11,11,12)`，边框 `rgb(38,38,42)`；标题与按钮亮色像素 877（物理 1470×100 区域）。截图 `docs/images/stage5-stats-dark-titlebar.png`。
 - 不修改窗口尺寸、圆角、客户区布局或统计查询逻辑。
 
+### 2.7 中英双语与首次启动语言选择（2026-11-15）
+
+- 全局语言状态由 `LocalizationService` 单例持有，`zh-CN` / `en-US` 二选一；所有静态文字用 `{loc:Tr Key}`，代码内文字用 `LocalizationService.T/F`，切换时触发 `PropertyChanged("Item[]")` 与 `LanguageChanged`，已打开的设置/统计/胶囊/托盘即时刷新，不重启。
+- **首次启动**（`ui-state.json` 无有效 `Language`）：先显示 460×340 深色模态 `LanguageWindow`，与设置/统计同一 Theme、圆角与字体；双语标题 `Welcome to HotspotMeter` / `欢迎使用 HotspotMeter`，两个 188×112 卡片按钮 `简体中文 / Simplified Chinese`、`English / English (US)`，悬停绿边。选择后写入配置并进入主界面；系统关闭/取消则直接退出，**不写语言**。
+- 配置中已有 `Language`（含旧版本升级后用户已选过）时不再弹出；非法值按未选择处理，运行期回退 `zh-CN`。
+- **设置窗口**：780×700（原 620 高），顶部新增“语言 / Language”卡，两个单选卡片；其余卡片文案全部资源化，英文下 `Lock Position`、`Taskbar Adaptation`、`Start HotspotMeter with Windows`、`Show statistics in taskbar` 等完整显示，未截断。
+- **统计窗口**：标题、范围按钮、概览、7 天图（含悬停）、表头、程序排行、占比/未归属说明、加载/空/失败/重试全部中英资源化；英文 `layout=ok texts=44`，无中文残留。
+- **胶囊**：`Data used` / `Down` / `Up`、右键 `Traffic Statistics | Lock Position | Resize… | Exit`、固定/解除固定与“上次会话”前缀随语言切换；自动适配最简档仍按设计隐藏说明标签。
+- **托盘**：`Traffic Statistics / Settings / Show Capsule / Hide Capsule / Exit`，切换时就地更新菜单项文字，不重建菜单。
+- 英文布局只调整必要的窗口高度与列宽；不改变窗口结构、统计逻辑、尺寸/位置计算。详细维护规则见 [11_Localization.md](11_Localization.md)。
+- 验证限制：英文界面通过 UI Automation、`UiDump` 布局断言与像素采样验证；本会话视觉引擎不可用，未人工肉眼终检；托盘菜单英文未实际展开。
+
 ---
 
 ## 3. 右键菜单（已确认项）
@@ -302,10 +314,10 @@
 
 ### 7.4 设置窗口
 
-- 780×620（最小 740×580），独立窗口、单实例；入口只在托盘与胶囊"调整大小…"。
-- 三张卡片：悬浮胶囊外观（四预设 + 自定义宽高 + 预览 + 校验文案）、悬浮胶囊行为
-  （固定状态、恢复默认位置、自动适配任务栏开关与检测结果）、程序（启动时显示胶囊）。
-- 所有更改立即应用并写入 `%LOCALAPPDATA%\HotspotMeter\ui-state.json`；窗口位置单独记忆。
+- 780×700（国际化后增加语言卡；仍按工作区夹取），独立窗口、单实例；入口只在托盘与胶囊"调整大小…"。
+- 四张卡片：语言（中文/English 单选卡片）、悬浮胶囊外观（四预设 + 自定义宽高 + 预览 + 校验文案）、悬浮胶囊行为
+  （固定状态、恢复默认位置、自动适配任务栏开关与检测结果）、程序（启动时显示胶囊、开机自启、出现在任务栏）。
+- 所有更改立即应用并写入 `%LOCALAPPDATA%\HotspotMeter\ui-state.json`；窗口位置单独记忆；语言切换即时刷新当前窗口。
 
 ### 7.5 自动适配任务栏（阶段 4C-8 / 4C-9 修订）
 

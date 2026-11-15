@@ -3,8 +3,10 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using System.Windows.Media;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Models;
 using HotspotMeter.App.Services;
+using HotspotMeter.Core.Localization;
 
 namespace HotspotMeter.App.ViewModels;
 
@@ -233,6 +235,36 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         private set => Set(ref _startupStatusText, value);
     }
 
+    /// <summary>
+    /// 语言单选组。两个属性互斥，setter 只在“被选中”时写宿主，
+    /// 避免取消选中时把语言又改回去。
+    /// </summary>
+    public bool IsChinese
+    {
+        get => string.Equals(_host.CurrentLanguage, LanguageCatalog.ChineseSimplified, StringComparison.Ordinal);
+        set
+        {
+            if (value && !IsChinese)
+            {
+                _host.SetLanguage(LanguageCatalog.ChineseSimplified);
+                Refresh();
+            }
+        }
+    }
+
+    public bool IsEnglish
+    {
+        get => string.Equals(_host.CurrentLanguage, LanguageCatalog.English, StringComparison.Ordinal);
+        set
+        {
+            if (value && !IsEnglish)
+            {
+                _host.SetLanguage(LanguageCatalog.English);
+                Refresh();
+            }
+        }
+    }
+
     public Brush MiniPresetBackground => SelectedBackground(CapsuleSize.Mini);
 
     public Brush SmallPresetBackground => SelectedBackground(CapsuleSize.Small);
@@ -255,7 +287,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
 
         CurrentSizeText = $"{size.Width:0.#} × {size.Height:0.#} DIP";
-        AspectRatioText = $"宽高比 {size.AspectRatioValue:0.00}";
+        AspectRatioText = LocalizationService.F("Settings_AspectRatio", size.AspectRatioValue);
 
         // 预览矩形按比例塞进 236×72 的槽位，保持真实胶囊的观感。
         var scale = Math.Min(236 / size.Width, 72 / size.Height);
@@ -263,8 +295,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         PreviewHeight = Math.Round(size.Height * scale, 1);
         PreviewCornerRadius = Math.Round(20 * scale, 1);
 
-        PinStatusText = _host.IsPinned ? "已固定：胶囊不可拖动" : "未固定：可按住胶囊拖动";
-        PinButtonText = _host.IsPinned ? "解除固定" : "固定位置";
+        PinStatusText = LocalizationService.T(_host.IsPinned ? "Settings_PinStatusPinned" : "Settings_PinStatusUnpinned");
+        PinButtonText = LocalizationService.T(_host.IsPinned ? "Settings_PinButtonUnpin" : "Settings_PinButtonPin");
         _startupVisible = _host.ShowCapsuleOnStartup;
         OnPropertyChanged(nameof(StartupVisible));
 
@@ -272,16 +304,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(AutoFitTaskbar));
         _showStatsInTaskbar = _host.ShowStatsInTaskbar;
         OnPropertyChanged(nameof(ShowStatsInTaskbar));
+        OnPropertyChanged(nameof(IsChinese));
+        OnPropertyChanged(nameof(IsEnglish));
         RefreshStartupState();
         TaskbarStatusText = _host.TaskbarStatusText;
-        AutoFitHint = _host.IsPinned && _host.AutoFitTaskbar
-            ? "已固定：位置锁定，自动定位不会移动窗口；尺寸仍会随任务栏高度变化。"
-            : "首次开启会按任务栏高度调整尺寸，并放到屏幕底部偏左；之后位置以你的拖动为准，不会自动寻找空隙。";
+        AutoFitHint = LocalizationService.T(
+            _host.IsPinned && _host.AutoFitTaskbar ? "Settings_TaskbarHintPinned" : "Settings_TaskbarHintUnpinned");
 
         var (left, top) = _host.CapsulePosition;
         PositionText = double.IsNaN(left) || double.IsNaN(top)
-            ? "尚未定位"
-            : $"屏幕坐标 {left:0}, {top:0} DIP";
+            ? LocalizationService.T("Settings_PositionUnknown")
+            : LocalizationService.F("Settings_Position", left, top);
 
         OnPropertyChanged(nameof(MiniPresetBackground));
         OnPropertyChanged(nameof(SmallPresetBackground));
@@ -307,23 +340,50 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         if (!TryParse(WidthText, out var width))
         {
-            ValidationMessage = "宽度必须是数字。";
+            ValidationMessage = LocalizationService.T("Settings_ErrorWidthNumber");
             return;
         }
 
         if (!TryParse(HeightText, out var height))
         {
-            ValidationMessage = "高度必须是数字。";
+            ValidationMessage = LocalizationService.T("Settings_ErrorHeightNumber");
             return;
         }
 
-        // 0.1 DIP 精度足够；超出范围的输入由 CapsuleSize 统一校验，并给出中文原因。
+        // 0.1 DIP 精度足够；范围与比例先在这里校验，以便错误信息跟随界面语言。
         width = Math.Round(width, 1);
         height = Math.Round(height, 1);
 
-        if (!CapsuleSize.TryCreate(width, height, out var size, out var error))
+        if (double.IsNaN(width) || double.IsInfinity(width) || width < CapsuleSize.MinWidth || width > CapsuleSize.MaxWidth)
         {
-            ValidationMessage = error;
+            ValidationMessage = LocalizationService.F("Settings_ErrorWidthRange", CapsuleSize.MinWidth, CapsuleSize.MaxWidth);
+            return;
+        }
+
+        if (double.IsNaN(height) || double.IsInfinity(height) || height < CapsuleSize.MinHeight || height > CapsuleSize.MaxHeight)
+        {
+            ValidationMessage = LocalizationService.F(
+                "Settings_ErrorHeightRange",
+                CapsuleSize.MinHeight,
+                CapsuleSize.MaxHeight,
+                width,
+                width * CapsuleSize.DefaultHeight / CapsuleSize.DefaultWidth);
+            return;
+        }
+
+        var ratio = width / height;
+        if (Math.Abs(ratio - CapsuleSize.AspectRatio) / CapsuleSize.AspectRatio > CapsuleSize.AspectTolerance)
+        {
+            ValidationMessage = LocalizationService.F(
+                "Settings_ErrorAspect",
+                width * CapsuleSize.DefaultHeight / CapsuleSize.DefaultWidth,
+                height * CapsuleSize.DefaultWidth / CapsuleSize.DefaultHeight);
+            return;
+        }
+
+        if (!CapsuleSize.TryCreate(width, height, out var size, out _))
+        {
+            ValidationMessage = LocalizationService.T("Settings_ErrorAspect");
             return;
         }
 

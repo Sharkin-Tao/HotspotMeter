@@ -188,3 +188,31 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 5. 多显示器混合 DPI、任务栏换边/自动隐藏。
 6. Alt+F4 关闭胶囊后再从托盘“显示”是否崩溃（已知风险，未修）。
 7. 24 小时以上常驻的内存/句柄/日志增长。
+
+## 中英双语验收记录（2026-11-15）
+
+### 自动化与构建
+
+| 命令/用例 | 结果 |
+| --- | --- |
+| `dotnet build HotspotMeter.sln` | 0 警告 / 0 错误 |
+| `dotnet test HotspotMeter.sln` | **408 通过** / 0 失败 / 0 跳过（含 18 个本地化用例） |
+| `LanguageCatalogTests` | 规范化 zh/en、非法值、中英键集合一致、占位符一致、缺键回退、核心翻译 |
+
+### 运行时验证（UIAutomation / UiDump / 像素）
+
+- 首次启动（无 `Language`）：`LanguageWindow` 690×510 物理（460×340 DIP @150%），双语标题/副标题/两个卡片；`artifacts/i18n-picker.png`。
+- 选择 English：4 s 内 `ui-state.json` 写入 `"Language":"en-US"`，进入主流程。
+- 取消语言窗：进程退出，配置未新增 `Language`。
+- 英文设置窗 `artifacts/i18n-settings-en2.txt`：`layout=ok texts=26`，无中文残留（语言选项“简体中文”按设计保留）。
+- 英文统计窗 `artifacts/i18n-stats-en.txt`：`layout=ok texts=44`，图表/表头/排行/状态全英文。
+- 英文胶囊 `artifacts/i18n-ui-en.txt`：四档 + 自定义 + 自动适配 `layout=ok`；`captionAbove/LeftAligned/FontMatch/WeightMatch/StyleMatch=True`、`captionOpacity=0.65`；菜单英文四项。
+- 运行中切换：设置/统计/胶囊即时刷新，配置写回 `zh-CN`，再切 English 正常；未重启。
+- 英文 Stage5 自检 `artifacts/i18n-stage5-en.txt`：startup/taskbar/topmost/stats/monitor 全通过。
+
+### 仍需人工验收 / 未验证
+
+1. 托盘菜单英文实际展开（图标在任务栏隐藏区，自动化未暴露；代码与 `MenuItemTexts` 已本地化）。
+2. 英文界面人工肉眼终检（本会话视觉引擎失败，仅有布局/像素证据）。
+3. 200% DPI、最小窗口尺寸、超长英文程序名组合。
+4. 第三语言扩展不在范围。

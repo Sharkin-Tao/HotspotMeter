@@ -314,3 +314,16 @@ PRAGMA busy_timeout = 5000;
 - `DailyTraffic.SessionCount` 在会话开始时 +1（跨午夜只记开始日），避免结算时按分段重复。
 - 统计读取按当前目标热点的 `ProfileKey` 过滤 `DailyTraffic`，不会把其他热点历史混入；逐程序数据仍不落库，按查询日实时读 Windows 归属 API。
 - 数据库健康：BUSY/LOCKED(5/6)、IOERR(10) 属于暂时占用，不隔离；CANTOPEN(14) 仍尝试隔离，Move 失败会抛异常而不是清空；只有确定损坏（如 NOTADB/快速检查失败）才整体移入 `corrupt-{timestamp}`。
+
+## 12. 用户配置与语言字段（2026-11-15）
+
+`ui-state.json` 不是 SQLite 表，仍由 `WindowStateStore` 原子读写（临时文件 + `File.Replace`，损坏文件改名 `.bad-*`）。国际化只新增一个可空字段，不改变任何已有字段含义：
+
+| 字段 | 类型 | 含义 | 缺省/兼容 |
+| --- | --- | --- | --- |
+| `Language` | `string?` | `"zh-CN"` / `"en-US"` | 旧文件无此字段 = 未选择，首次启动弹语言窗；非法值按未选择处理并回退 `zh-CN` |
+
+- 读取顺序：`Load()` → `LanguageCatalog.TryNormalize` → 有效则 `LocalizationService.SetLanguage`；否则主流程在单实例检查后显示 `LanguageWindow`。
+- 用户确认后才 `Update(s => s.Language = ...)`；取消/关闭语言窗不写入，也不重置其他字段。
+- 语言只影响展示（文案、日期文化、数字分组），**不进入数据库**，不改历史流量、会话、日汇总或统计口径；切换语言不会触发任何写库操作。
+- 数据库 Schema 仍为 `user_version=3`，本次未新增/修改表、列、索引。

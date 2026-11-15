@@ -4,9 +4,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:HotspotMeter.App.ViewModels"
+        xmlns:loc="clr-namespace:HotspotMeter.App.Localization"
         mc:Ignorable="d"
-        Title="设置 — HotspotMeter"
-        Width="780" Height="620"
+        Title="{loc:Tr Settings_WindowTitle}"
+        Width="780" Height="700"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgApp}"
@@ -17,6 +18,42 @@
         SnapsToDevicePixels="True"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
 
+    <Window.Resources>
+        <Style x:Key="LanguageRadioStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Surface" Background="{StaticResource BgRaised}"
+                                BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"
+                                CornerRadius="8" Padding="12,8">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="Dot" Width="14" Height="14" CornerRadius="7"
+                                        BorderBrush="{StaticResource BorderSelected}" BorderThickness="1.5"
+                                        VerticalAlignment="Center">
+                                    <Ellipse x:Name="Fill" Margin="3" Fill="{StaticResource AccentGreen}"
+                                             Visibility="Collapsed" />
+                                </Border>
+                                <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="{StaticResource BgHover}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource AccentGreen}" />
+                                <Setter TargetName="Fill" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -26,31 +63,46 @@
 
         <!-- 标题 -->
         <StackPanel Grid.Row="0" Margin="28,22,28,10">
-            <TextBlock Text="设置" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="调整悬浮胶囊的外观、位置与启动行为，修改立即生效。"
+            <TextBlock Text="{loc:Tr Settings_Title}" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Text="{loc:Tr Settings_Subtitle}"
                        Style="{StaticResource CaptionTextStyle}" Margin="0,4,0,0" />
         </StackPanel>
 
         <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" Margin="28,6,28,0" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
             <StackPanel>
+                <!-- 语言 -->
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Tr Settings_LanguageSection}" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="{loc:Tr Settings_LanguageHint}"
+                                   Style="{StaticResource CaptionTextStyle}" Margin="0,4,0,10" />
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="Language" Style="{StaticResource LanguageRadioStyle}"
+                                         Content="简体中文" IsChecked="{Binding IsChinese, Mode=TwoWay}" />
+                            <RadioButton GroupName="Language" Style="{StaticResource LanguageRadioStyle}"
+                                         Content="English" IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- 外观 -->
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel>
-                        <TextBlock Text="悬浮胶囊外观" Style="{StaticResource SectionTitleStyle}" />
-                        <TextBlock Text="四种尺寸均按 320 : 104 等比例缩放，内部布局与标准尺寸完全一致，修改立即生效。"
+                        <TextBlock Text="{loc:Tr Settings_AppearanceSection}" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="{loc:Tr Settings_AppearanceHint}"
                                    Style="{StaticResource CaptionTextStyle}" Margin="0,4,0,12" />
 
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="迷你 · 220 × 71.5" Style="{StaticResource PresetButtonStyle}"
+                            <Button Content="{loc:Tr Settings_PresetMini}" Style="{StaticResource PresetButtonStyle}"
                                     Background="{Binding MiniPresetBackground}" Command="{Binding UseMiniCommand}"
                                     Margin="0,0,8,0" />
-                            <Button Content="小型 · 280 × 91" Style="{StaticResource PresetButtonStyle}"
+                            <Button Content="{loc:Tr Settings_PresetSmall}" Style="{StaticResource PresetButtonStyle}"
                                     Background="{Binding SmallPresetBackground}" Command="{Binding UseSmallCommand}"
                                     Margin="0,0,8,0" />
-                            <Button Content="标准 · 320 × 104" Style="{StaticResource PresetButtonStyle}"
+                            <Button Content="{loc:Tr Settings_PresetStandard}" Style="{StaticResource PresetButtonStyle}"
                                     Background="{Binding StandardPresetBackground}" Command="{Binding UseStandardCommand}"
                                     Margin="0,0,8,0" />
-                            <Button Content="大型 · 400 × 130" Style="{StaticResource PresetButtonStyle}"
+                            <Button Content="{loc:Tr Settings_PresetLarge}" Style="{StaticResource PresetButtonStyle}"
                                     Background="{Binding LargePresetBackground}" Command="{Binding UseLargeCommand}" />
                         </StackPanel>
 
@@ -64,21 +116,21 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Column="0" Text="宽度" VerticalAlignment="Center"
+                            <TextBlock Grid.Column="0" Text="{loc:Tr Settings_Width}" VerticalAlignment="Center"
                                        Style="{StaticResource CaptionTextStyle}" Margin="0,0,8,0" />
                             <TextBox Grid.Column="1" Text="{Binding WidthText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource DarkTextBoxStyle}" />
-                            <TextBlock Grid.Column="2" Text="高度" VerticalAlignment="Center"
+                            <TextBlock Grid.Column="2" Text="{loc:Tr Settings_Height}" VerticalAlignment="Center"
                                        Style="{StaticResource CaptionTextStyle}" Margin="16,0,8,0" />
                             <TextBox Grid.Column="3" Text="{Binding HeightText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource DarkTextBoxStyle}" />
-                            <Button Grid.Column="4" Content="应用" Command="{Binding ApplyCustomCommand}"
+                            <Button Grid.Column="4" Content="{loc:Tr Settings_Apply}" Command="{Binding ApplyCustomCommand}"
                                     Style="{StaticResource SettingButtonStyle}" Margin="12,0,0,0" />
-                            <TextBlock Grid.Column="5" Text="DIP" VerticalAlignment="Center"
+                            <TextBlock Grid.Column="5" Text="{loc:Tr Settings_Dip}" VerticalAlignment="Center"
                                        Style="{StaticResource HintTextStyle}" Margin="10,0,0,0" />
                         </Grid>
 
-                        <TextBlock Text="宽度 220–480 DIP · 高度 71.5–156 DIP · 宽高比固定为 320 : 104"
+                        <TextBlock Text="{loc:Tr Settings_SizeRangeHint}"
                                    Style="{StaticResource HintTextStyle}" Margin="0,8,0,0" />
 
                         <TextBlock Text="{Binding ValidationMessage}"
@@ -112,7 +164,7 @@
                 <!-- 位置行为 -->
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel>
-                        <TextBlock Text="悬浮胶囊行为" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="{loc:Tr Settings_BehaviorSection}" Style="{StaticResource SectionTitleStyle}" />
                         <TextBlock Text="{Binding PinStatusText}" Style="{StaticResource CaptionTextStyle}" Margin="0,4,0,12" />
 
                         <Grid>
@@ -121,8 +173,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="位置固定" FontSize="12" />
-                                <TextBlock Text="固定后禁止拖动，避免误触；随时可以解除。" Style="{StaticResource HintTextStyle}"
+                                <TextBlock Text="{loc:Tr Settings_PinName}" FontSize="12" />
+                                <TextBlock Text="{loc:Tr Settings_PinHint}" Style="{StaticResource HintTextStyle}"
                                            Margin="0,2,0,0" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="{Binding PinButtonText}" Command="{Binding TogglePinCommand}"
@@ -137,8 +189,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="自动适配任务栏" FontSize="12" />
-                                <TextBlock Text="按当前显示器 DPI 与任务栏实际厚度自动调整胶囊尺寸，位置仍由你拖动；不会自动停靠或寻找任务栏空隙。"
+                                <TextBlock Text="{loc:Tr Settings_AutoFitName}" FontSize="12" />
+                                <TextBlock Text="{loc:Tr Settings_AutoFitHint}"
                                            Style="{StaticResource HintTextStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding TaskbarStatusText}" Style="{StaticResource HintTextStyle}"
                                            Margin="0,4,0,0" TextWrapping="Wrap" />
@@ -157,11 +209,11 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="恢复默认位置" FontSize="12" />
-                                <TextBlock Text="回到主屏右下角、任务栏上方，并保留当前尺寸。" Style="{StaticResource HintTextStyle}"
+                                <TextBlock Text="{loc:Tr Settings_ResetName}" FontSize="12" />
+                                <TextBlock Text="{loc:Tr Settings_ResetHint}" Style="{StaticResource HintTextStyle}"
                                            Margin="0,2,0,0" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="恢复默认位置" Command="{Binding ResetPositionCommand}"
+                            <Button Grid.Column="1" Content="{loc:Tr Settings_ResetButton}" Command="{Binding ResetPositionCommand}"
                                     Style="{StaticResource SettingButtonStyle}" />
                         </Grid>
 
@@ -172,12 +224,12 @@
                 <!-- 程序行为 -->
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel>
-                        <TextBlock Text="程序行为" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="{loc:Tr Settings_ProgramSection}" Style="{StaticResource SectionTitleStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <CheckBox Content="启动时显示悬浮胶囊" Style="{StaticResource SwitchCheckBoxStyle}"
+                            <CheckBox Content="{loc:Tr Settings_ShowOnStartup}" Style="{StaticResource SwitchCheckBoxStyle}"
                                       IsChecked="{Binding StartupVisible, Mode=TwoWay}" />
                         </StackPanel>
-                        <TextBlock Text="关闭后启动时只保留托盘图标，后台监控仍然运行。"
+                        <TextBlock Text="{loc:Tr Settings_ShowOnStartupHint}"
                                    Style="{StaticResource HintTextStyle}" Margin="0,8,0,0" />
 
                         <Separator Background="{StaticResource BorderSubtle}" Margin="0,12" />
@@ -188,7 +240,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="开机自动启动 HotspotMeter" FontSize="12" />
+                                <TextBlock Text="{loc:Tr Settings_AutoStartName}" FontSize="12" />
                                 <TextBlock Text="{Binding StartupStatusText}" Style="{StaticResource HintTextStyle}"
                                            Margin="0,2,0,0" TextWrapping="Wrap" />
                             </StackPanel>
@@ -204,15 +256,15 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="统计窗口出现在任务栏" FontSize="12" />
-                                <TextBlock Text="控制独立流量统计窗口是否拥有任务栏按钮，与“自动适配任务栏”无关；关闭后仍可从托盘打开。"
+                                <TextBlock Text="{loc:Tr Settings_StatsTaskbarName}" FontSize="12" />
+                                <TextBlock Text="{loc:Tr Settings_StatsTaskbarHint}"
                                            Style="{StaticResource HintTextStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
                             </StackPanel>
                             <CheckBox Grid.Column="1" Style="{StaticResource SwitchCheckBoxStyle}"
                                       IsChecked="{Binding ShowStatsInTaskbar, Mode=TwoWay}" VerticalAlignment="Center" />
                         </Grid>
 
-                        <TextBlock Text="关闭设置或统计窗口不会停止监控；退出程序请使用托盘菜单或胶囊右键菜单。"
+                        <TextBlock Text="{loc:Tr Settings_FooterNote}"
                                    Style="{StaticResource HintTextStyle}" Margin="0,6,0,0" />
                     </StackPanel>
                 </Border>
@@ -225,9 +277,9 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="所有更改会立即应用并保存。" Style="{StaticResource HintTextStyle}"
+            <TextBlock Text="{loc:Tr Settings_AllChangesSaved}" Style="{StaticResource HintTextStyle}"
                        VerticalAlignment="Center" />
-            <Button Grid.Column="1" Content="完成" Style="{StaticResource PrimaryButtonStyle}"
+            <Button Grid.Column="1" Content="{loc:Tr Settings_Done}" Style="{StaticResource PrimaryButtonStyle}"
                     Width="96" Height="34" Click="OnClose" IsDefault="True" />
         </Grid>
     </Grid>

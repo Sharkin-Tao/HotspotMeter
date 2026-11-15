@@ -1,4 +1,4 @@
-﻿# 10 开发日志
+# 10 开发日志
 
 > 记录每次实际执行的操作、命令、结果与遗留问题。只写发生过的事；计划与设想去 08/09。
 
@@ -1097,3 +1097,17 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 验证：Debug/Release 构建 0 警告 0 错误；`dotnet test` Debug/Release 均 **390/390**；`HOTSPOTMETER_STAGE5_TEST` 自检 startup/taskbar/topmost/stats/monitor 全通过，退出 7.4 s 无超时；统计窗口 `layout=ok texts=44`，截图 `artifacts/stage6-stats.png`（1470×1050），标题栏 `rgb(11,11,12)`。
 - 新增决策 D-093～D-099；更新 PROJECT_CONTEXT、docs/02/03/04/05/07/08/09。
 - 已知未解决：WLAN 句柄永久错误不自动重开；>3 s 采样间隔仍按睡眠丢字节；无睡前检查点；`Local\` 单实例与 RunId 清扫；Alt+F4 关闭胶囊后重开风险；Explorer 重启托盘恢复未人工验证；未做 24 h 长跑与多 DPI 实机。
+
+## 2026-11-15 中英双语：首次启动选择 + 全局即时切换
+
+- 调查现状：WPF App 无统一资源体系，设置/统计/胶囊/托盘文字大量硬编码；`ui-state.json` 已有原子写；启动顺序为单实例→读配置→建胶囊/托盘/监控。
+- 新增 `HotspotMeter.Core/Localization/LanguageCatalog.cs`（zh-CN/en-US 两套约 120 键、`TryNormalize/Normalize/Get/Keys`）；`HotspotMeter.App/Localization/LocalizationService.cs`（单例、索引器、`SetLanguage`、`T/F`、`TrExtension`）。
+- 首次启动：`App.OnStartup` 改为读配置语言→单实例→无有效语言时 `LanguageWindow.ShowDialog()`；取消直接退出且不写配置；选择后写 `ui-state.Language`、切换文化并重新加载；主窗口创建在语言确定之后。
+- 新增 `LanguageWindow` 460×340 深色双语选择窗，两个卡片按钮、`AutomationProperties.Name`、`DarkTitleBar`，与设置/统计主题一致。
+- 设置窗增至 780×700，新增语言卡；全部静态文字改 `{loc:Tr}`，状态/错误改 `T/F`，订阅 `LanguageChanged` 后 `Refresh(keepSizeInputs)`。
+- 统计窗 XAML/VM 全部资源化，`RefreshLanguage()` 重跑 `LoadAsync()`；胶囊标签/速度/菜单/固定/上次会话前缀本地化；托盘五项就地 `ApplyLanguage()` + `Refresh()`。
+- 运行期提示：`MonitorSessionService` 等待热点与采集警告、`StartupRegistrationService` 错误、`CapsuleSize` 校验、`AttributedUsageReader` 状态、`CapsuleWindow.DescribeTaskbar` 全部走资源键。
+- 测试：新增 `LanguageCatalogTests` 18 例；`dotnet build` 0/0；`dotnet test` **408/408**。
+- 运行时验证：首次启动 UIAutomation 选择 English 并写 `en-US`；取消不写；英文设置 `layout=ok texts=26`、统计 `layout=ok texts=44`、胶囊四档/自定义 `layout=ok`、菜单英文；运行中中英互切即时生效；英文 Stage5 自检全通过。证据 `artifacts/i18n-*`。
+- 限制：视觉引擎不可用，未人工目检；托盘菜单未实际展开；自动适配最简档按设计隐藏说明标签。
+- 文档：新增 `docs/11_Localization.md`；更新 docs/02 §2.7/§7.4、docs/04 §12、docs/07、docs/09 D-100～D-103、PROJECT_CONTEXT。

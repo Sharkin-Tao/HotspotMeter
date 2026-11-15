@@ -39,9 +39,15 @@ public interface ISettingsHost
     /// <summary>统计窗口是否显示任务栏按钮；旧配置缺省为 true。</summary>
     bool ShowStatsInTaskbar { get; }
 
+    /// <summary>当前界面语言（zh-CN / en-US），供设置窗口的单选组回显。</summary>
+    string CurrentLanguage { get; }
+
     void SetAutoStart(bool enabled);
 
     void SetShowStatsInTaskbar(bool show);
+
+    /// <summary>切换界面语言并立即持久化；所有窗口共享同一个语言服务。</summary>
+    void SetLanguage(string language);
 
     void ResetPosition();
 }

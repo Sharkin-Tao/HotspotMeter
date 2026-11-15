@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Models;
 using HotspotMeter.Core.Formatting;
 using HotspotMeter.Core.Layout;
@@ -107,7 +108,19 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
         }
     }
 
-    public string PinMenuText => IsPinned ? "解除固定位置" : "固定位置";
+    public string PinMenuText => LocalizationService.T(IsPinned ? "Capsule_MenuUnpin" : "Capsule_MenuPin");
+
+    /// <summary>语言切换后重建由代码拼接的文案；纯绑定文字由 TrExtension 自行刷新。</summary>
+    public void RefreshLanguage()
+    {
+        OnPropertyChanged(nameof(PinMenuText));
+
+        // 断开状态下显示的“上次 xxx”含语言前缀，需要按新语言重新拼接。
+        if (!IsConnected && _lastClosedDownload is not null && _lastClosedUpload is not null)
+        {
+            ShowDisconnected(null);
+        }
+    }
 
     // ------- 尺寸与派生布局 -------
     // 所有数值都以 DIP 计算；XAML 只绑定这些派生值，窗口本体不做像素换算。
@@ -348,7 +361,9 @@ public sealed class CapsuleViewModel : INotifyPropertyChanged
 
             // 最简排版下空间只够一个数字，前缀会与速度块相撞；
             // 其余档位保留"上次"前缀，满足断开后明确标注"上次会话"的产品要求。
-            SessionText = _density == CapsuleDensity.Minimal ? formatted : $"上次 {formatted}";
+            SessionText = _density == CapsuleDensity.Minimal
+                ? formatted
+                : LocalizationService.F("Capsule_Previous", formatted);
             return;
         }
 

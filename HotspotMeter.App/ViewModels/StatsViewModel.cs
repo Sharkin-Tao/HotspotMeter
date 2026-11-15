@@ -3,8 +3,10 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.Services;
 using HotspotMeter.Core.Formatting;
+using HotspotMeter.Core.Localization;
 
 namespace HotspotMeter.App.ViewModels;
 
@@ -29,7 +31,7 @@ public sealed class DailyBarItem
 
     public bool IsToday { get; init; }
 
-    public string EmptyText => HasRecord ? string.Empty : "无数据";
+    public string EmptyText => HasRecord ? string.Empty : LocalizationService.T("Stats_NoData");
 }
 
 /// <summary>程序排行的一行。ShareText 只在分母明确（已归属总量）时显示。</summary>
@@ -62,7 +64,7 @@ public enum StatsScope
 /// </summary>
 public sealed class StatsViewModel : INotifyPropertyChanged
 {
-    private static readonly CultureInfo Culture = CultureInfo.CurrentCulture;
+    private static CultureInfo Culture => LocalizationService.Current.Culture;
 
     private readonly TrafficStatsService _statsService;
     private readonly AttributedUsageReader _usageReader;
@@ -72,15 +74,15 @@ public sealed class StatsViewModel : INotifyPropertyChanged
     private DateTime? _selectedDate = DateTime.Today;
     private StatsScope _scope = StatsScope.Day;
     private bool _isBusy;
-    private string _statusText = "正在读取历史数据…";
+    private string _statusText = LocalizationService.T("Stats_Loading");
     private string _errorText = string.Empty;
-    private string _rangeTitle = "今日";
-    private string _targetText = "目标热点未解析";
+    private string _rangeTitle = LocalizationService.T("Stats_RangeToday");
+    private string _targetText = LocalizationService.T("Stats_TargetUnresolved");
     private string _totalText = "—";
     private string _downloadText = "—";
     private string _uploadText = "—";
     private string _updateText = "—";
-    private string _programStatus = "正在读取逐应用数据…";
+    private string _programStatus = LocalizationService.T("Stats_ProgramsLoading");
     private string _dateQueryText = DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private int _loadVersion;
 
@@ -226,8 +228,8 @@ public sealed class StatsViewModel : INotifyPropertyChanged
             }
 
             TargetText = profileKey is null
-                ? "目标热点未解析"
-                : $"目标热点：{ssid}";
+                ? LocalizationService.T("Stats_TargetUnresolved")
+                : LocalizationService.F("Stats_Target", ssid!);
             var seven = await _statsService.GetLastSevenDaysAsync(profileKey, token);
             if (version != _loadVersion)
             {
@@ -242,8 +244,8 @@ public sealed class StatsViewModel : INotifyPropertyChanged
 
             if (profileKey is null)
             {
-                ClearPrograms("未连接目标热点，无法确定逐应用统计属于哪张网卡。连接热点后点击刷新。");
-                SetFooter("数据来自本机热点会话检查点；不是运营商计费流量。");
+                ClearPrograms(LocalizationService.T("Stats_NoTargetPrograms"));
+                SetFooter(LocalizationService.T("Stats_Footer"));
                 return;
             }
 
@@ -253,9 +255,9 @@ public sealed class StatsViewModel : INotifyPropertyChanged
                 return;
             }
 
-            SetFooter(_statsService.DatabaseExists
-                ? "数据来自本机热点会话检查点；不是运营商计费流量。"
-                : "尚未生成历史数据库：连接热点并保持程序运行后会出现记录。");
+            SetFooter(LocalizationService.T(_statsService.DatabaseExists
+                ? "Stats_Footer"
+                : "Stats_FooterNoDb"));
         }
         catch (OperationCanceledException)
         {
@@ -265,8 +267,8 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         {
             if (version == _loadVersion && !token.IsCancellationRequested)
             {
-                ErrorText = $"历史数据读取失败：{ex.Message}";
-                StatusText = "可点击刷新重试；后台监控不受影响。";
+                ErrorText = LocalizationService.F("Stats_ErrorHistory", ex.Message);
+                StatusText = LocalizationService.T("Stats_ErrorRetry");
             }
         }
         finally
@@ -287,10 +289,20 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         }
     }
 
+    public void RefreshLanguage()
+    {
+        // 所有展示文字都由 LoadAsync 重新生成（含日期/星期与逐应用名称），
+        // 因此语言切换复用同一条查询路径，避免维护第二套本地化快照。
+        if (!_lifetime.IsCancellationRequested)
+        {
+            _ = LoadAsync();
+        }
+    }
+
     private void SetFooter(string status)
     {
         StatusText = status;
-        UpdateText = $"更新于 {DateTime.Now:HH:mm:ss}";
+        UpdateText = LocalizationService.F("Stats_Updated", DateTime.Now.ToString("HH:mm:ss", Culture));
     }
 
     private void ClearPrograms(string status)
@@ -316,13 +328,13 @@ public sealed class StatsViewModel : INotifyPropertyChanged
                 DateTimeStyles.None,
                 out var date))
         {
-            ErrorText = "日期格式应为 yyyy-MM-dd，例如 2026-11-14。";
+            ErrorText = LocalizationService.T("Stats_DateFormat");
             return;
         }
 
         if (date.Date > DateTime.Today)
         {
-            ErrorText = "不能查询未来的日期。";
+            ErrorText = LocalizationService.T("Stats_FutureDate");
             return;
         }
 
@@ -355,13 +367,15 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         if (_scope == StatsScope.LastSevenDays)
         {
             rows = await _statsService.GetDailyAsync(today.AddDays(-6), today, profileKey, token);
-            title = "最近 7 天";
+            title = LocalizationService.T("Stats_RangeLast7");
         }
         else
         {
             var date = DateOnly.FromDateTime(SelectedDate ?? DateTime.Today);
             rows = await _statsService.GetDailyAsync(date, date, profileKey, token);
-            title = date == today ? "今日" : date.ToString("yyyy-MM-dd", Culture);
+            title = date == today
+                ? LocalizationService.T("Stats_RangeToday")
+                : date.ToString("yyyy-MM-dd", Culture);
         }
 
         // 版本检查必须挡在所有可见状态赋值之前：否则旧查询会覆盖新查询的标题与数字。
@@ -375,9 +389,9 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         var recorded = rows.Where(r => r.HasRecord).ToArray();
         if (recorded.Length == 0)
         {
-            TotalText = "无数据";
-            DownloadText = "无数据";
-            UploadText = "无数据";
+            TotalText = LocalizationService.T("Stats_NoData");
+            DownloadText = LocalizationService.T("Stats_NoData");
+            UploadText = LocalizationService.T("Stats_NoData");
             return true;
         }
 
@@ -408,7 +422,7 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         }
 
         Programs.Clear();
-        ProgramStatus = "正在读取逐应用数据…";
+        ProgramStatus = LocalizationService.T("Stats_ProgramsLoading");
 
         // 逐应用 API 按“单日区间”查询；最近 7 天需要逐日取回后按 AttributionId 合并。
         // 不能拿总量减已归属来伪造应用行，差额只作为“未归属”说明。
@@ -463,7 +477,7 @@ public sealed class StatsViewModel : INotifyPropertyChanged
 
         if (availableDays == 0)
         {
-            ProgramStatus = firstFailure ?? "逐应用流量不可用。";
+            ProgramStatus = firstFailure ?? LocalizationService.T("Stats_UnavailableShort");
             return;
         }
 
@@ -476,7 +490,9 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         {
             Programs.Add(new ProgramUsageItem
             {
-                Name = program.DisplayName,
+                Name = program.IsUnattributed
+                    ? LocalizationService.T("Stats_Unattributed")
+                    : program.DisplayName,
                 DownloadText = ByteSizeFormatter.Format(program.DownloadBytes, Culture),
                 UploadText = ByteSizeFormatter.Format(program.UploadBytes, Culture),
                 TotalText = ByteSizeFormatter.Format(program.TotalBytes, Culture),
@@ -488,15 +504,20 @@ public sealed class StatsViewModel : INotifyPropertyChanged
         }
 
         var scopeLabel = _scope == StatsScope.LastSevenDays
-            ? "最近 7 天"
+            ? LocalizationService.T("Stats_RangeLast7")
             : dates[0].ToString("yyyy-MM-dd", Culture);
         var unattributed = Math.Max(0, totalDownload + totalUpload - listedTotal);
         var coverage = availableDays < dates.Length
-            ? $"；仅 {availableDays}/{dates.Length} 天有系统归属数据，占比不可跨日比较"
+            ? LocalizationService.F("Stats_Coverage", availableDays, dates.Length)
             : string.Empty;
         ProgramStatus = ordered.Length == 0
-            ? $"{scopeLabel}没有可用的逐应用归属记录；系统可能尚未生成统计。"
-            : $"系统归属数据：{ordered.Length} 项（{scopeLabel}）；占比按列表合计；未归属差额 {ByteSizeFormatter.Format(unattributed, Culture)}{coverage}。";
+            ? LocalizationService.F("Stats_ProgramsEmpty", scopeLabel)
+            : LocalizationService.F(
+                "Stats_ProgramsSummary",
+                ordered.Length,
+                scopeLabel,
+                ByteSizeFormatter.Format(unattributed, Culture),
+                coverage);
     }
 
     private void BuildBars(IReadOnlyList<DailyUsage> rows, DateOnly today)
@@ -512,12 +533,19 @@ public sealed class StatsViewModel : INotifyPropertyChanged
             Days.Add(new DailyBarItem
             {
                 Date = row.Date,
-                DateLabel = row.Date.ToString("M/d", Culture),
+                DateLabel = row.Date.ToString(
+                    LocalizationService.Current.Language == LanguageCatalog.English ? "MMM d" : "M/d",
+                    Culture),
                 WeekdayLabel = row.Date.ToString("ddd", Culture),
-                TotalText = row.HasRecord ? ByteSizeFormatter.Format(total, Culture) : "无数据",
+                TotalText = row.HasRecord
+                    ? ByteSizeFormatter.Format(total, Culture)
+                    : LocalizationService.T("Stats_NoData"),
                 DetailText = row.HasRecord
-                    ? $"↓ {ByteSizeFormatter.Format(row.DownloadBytes, Culture)}  ↑ {ByteSizeFormatter.Format(row.UploadBytes, Culture)}"
-                    : "当天没有检查点",
+                    ? LocalizationService.F(
+                        "Stats_BarDetail",
+                        ByteSizeFormatter.Format(row.DownloadBytes, Culture),
+                        ByteSizeFormatter.Format(row.UploadBytes, Culture))
+                    : LocalizationService.T("Stats_BarNoCheckpoint"),
                 DownloadHeight = Math.Max(0, row.DownloadBytes * scale),
                 UploadHeight = Math.Max(0, row.UploadBytes * scale),
                 HasRecord = row.HasRecord,

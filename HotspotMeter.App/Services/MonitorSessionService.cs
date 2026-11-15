@@ -1,4 +1,5 @@
 using System.Windows.Threading;
+using HotspotMeter.App.Localization;
 using HotspotMeter.App.ViewModels;
 using HotspotMeter.Core.Models;
 using HotspotMeter.Core.Monitoring;
@@ -74,7 +75,7 @@ public sealed class MonitorSessionService : IAsyncDisposable
             {
                 // 开机自启常发生在热点关联之前：不要一判定“没有热点”就永久停摆。
                 // 低频重试只在未识别到目标时运行，识别成功后立即停止。
-                viewModel.ShowUnavailable("等待已连接的 Wi-Fi 热点…（后台每 5 秒重新检测）");
+                viewModel.ShowUnavailable(LocalizationService.T("Capsule_WaitingForHotspot"));
                 StartTargetRetry();
                 return;
             }
@@ -158,9 +159,14 @@ public sealed class MonitorSessionService : IAsyncDisposable
 
                 Post(() => _viewModel?.ApplySessionEnded(info));
             };
-            engine.AnomalyDetected += (_, anomaly) => Post(() => _viewModel?.SetWarning(anomaly.Message));
+            engine.AnomalyDetected += (_, anomaly) => Post(() => _viewModel?.SetWarning(LocalizationService.T(anomaly.Kind switch
+            {
+                AnomalyKind.DetectorFailure => "Warning_DetectorFailure",
+                AnomalyKind.CounterFailure => "Warning_CounterFailure",
+                _ => "Warning_ImplausibleDelta",
+            })));
             engine.RecoveryCandidateDetected += (_, candidateInfo) =>
-                Post(() => _viewModel?.SetWarning($"检测到未确认的恢复流量：{candidateInfo.Gap.TotalBytes} 字节"));
+                Post(() => _viewModel?.SetWarning(LocalizationService.F("Warning_RecoveryUnconfirmed", candidateInfo.Gap.TotalBytes)));
 
             _engine = engine;
             await engine.StartAsync(cancellationToken);
