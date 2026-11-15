@@ -2,7 +2,7 @@
 
 **A lightweight and simple Windows hotspot traffic monitor.**
 
-[简体中文](README.md)
+[简体中文](README-CN.md)
 
 HotspotMeter is a desktop traffic monitoring tool for Windows. It helps you keep track of your mobile hotspot connection status, real-time network traffic, and application-level data usage.
 
