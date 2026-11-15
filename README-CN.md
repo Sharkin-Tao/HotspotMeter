@@ -41,11 +41,9 @@ HotspotMeter 是一款面向 Windows 用户的桌面流量监控工具，帮助�
 
 ## 🖥️ 界面预览
 
-项目截图：
-
 | 桌面悬浮胶囊 | 流量统计窗口 |
-| --- | --- |
-| 待添加截图 | 待添加截图 |
+|:---:|:---:|
+| <img src="./Desktop%20Floating%20Capsule.png" width="400" alt="桌面悬浮胶囊"> | <img src="./Traffic%20Statistics.png" width="400" alt="流量统计窗口"> |
 
 ## 🛠️ 技术栈
 
