@@ -1,8 +1,19 @@
 # HotspotMeter
 
-**一款轻量、简洁的 Windows 手机热点流量监控工具。**
+### Windows Hotspot Traffic Monitor
 
-[English](README_EN.md)
+**Know your hotspot traffic at a glance.**
+
+![Windows](https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
+![CSharp](https://img.shields.io/badge/Language-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
+![WPF](https://img.shields.io/badge/Framework-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
+![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
+
+**简体中文** | [English](README_EN.md)
+
+---
+
+
 
 HotspotMeter 是一款面向 Windows 用户的桌面流量监控工具，帮助你直观了解手机热点连接状态、实时网络流量以及各应用程序的流量消耗。
 
