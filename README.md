@@ -9,7 +9,7 @@
 ![WPF](https://img.shields.io/badge/Framework-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
-[简体中文](README.md) | **English**
+[简体中文](README-CN.md) | **English**
 
 ---
 
