@@ -1,5 +1,22 @@
 # HotspotMeter
 
+### Windows Hotspot Traffic Monitor
+
+**Know your hotspot traffic at a glance.**
+
+![Windows](https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
+![CSharp](https://img.shields.io/badge/Language-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
+![WPF](https://img.shields.io/badge/Framework-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
+![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
+
+[简体中文](README.md) | **English**
+
+---
+
+
+
+# HotspotMeter
+
 **A lightweight and simple Windows hotspot traffic monitor.**
 
 [简体中文](README-CN.md)
