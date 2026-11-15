@@ -9,7 +9,7 @@
 ![框架](https://img.shields.io/badge/开发框架-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![数据库](https://img.shields.io/badge/数据库-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
-**简体中文** | [English](README_EN.md)
+**简体中文** | [English](README.md)
 
 ---
 
