@@ -42,7 +42,7 @@ Monitor your hotspot traffic directly from your desktop without repeatedly openi
 
 | Desktop Floating Capsule | Traffic Statistics |
 | --- | --- |
-| Screenshot coming soon | Screenshot coming soon |
+| <img src="docs/images/Desktop%20Floating%20Capsule.png" width="400" alt="Desktop Floating Capsule"> | <img src="docs/images/Traffic%20Statistics.png" width="400" alt="Traffic Statistics"> |
 
 ## 🛠️ Tech Stack
 
