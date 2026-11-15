@@ -285,6 +285,6 @@ internal static class Program
         Console.WriteLine("  --seconds <秒>      运行指定秒数后自动停止（默认一直运行到 Ctrl+C）");
         Console.WriteLine("  --json              每个快照输出一行 JSON，便于脚本处理");
         Console.WriteLine();
-        Console.WriteLine("示例：dotnet run --project tools/MonitorHost -- --ssid \"OPPO Find X9\" --seconds 60");
+        Console.WriteLine("示例：dotnet run --project tools/MonitorHost -- --ssid \"TestHotspot\" --seconds 60");
     }
 }

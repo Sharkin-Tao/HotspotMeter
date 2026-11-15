@@ -216,7 +216,7 @@
 - **统计窗口**：标题、范围按钮、概览、7 天图（含悬停）、表头、程序排行、占比/未归属说明、加载/空/失败/重试全部中英资源化；英文 `layout=ok texts=44`，无中文残留。
 - **胶囊**：`Data used` / `Down` / `Up`、右键 `Traffic Statistics | Lock Position | Resize… | Exit`、固定/解除固定与“上次会话”前缀随语言切换；自动适配最简档仍按设计隐藏说明标签。
 - **托盘**：`Traffic Statistics / Settings / Show Capsule / Hide Capsule / Exit`，切换时就地更新菜单项文字，不重建菜单。
-- 英文布局只调整必要的窗口高度与列宽；不改变窗口结构、统计逻辑、尺寸/位置计算。详细维护规则见 [11_Localization.md](11_Localization.md)。
+- 英文布局只调整必要的窗口高度与列宽；不改变窗口结构、统计逻辑、尺寸/位置计算。详细维护规则见 [13_Localization.md](13_Localization.md)。
 - 验证限制：英文界面通过 UI Automation、`UiDump` 布局断言与像素采样验证；本会话视觉引擎不可用，未人工肉眼终检；托盘菜单英文未实际展开。
 
 ---

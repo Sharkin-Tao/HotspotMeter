@@ -144,17 +144,17 @@ public class OperationIdFactoryTests
     private static long CreateProfile(PersistenceContext context) =>
         context.Profiles.GetOrCreateAsync(
             Guid.Parse("00112233-4455-6677-8899-aabbccddeeff"),
-            Guid.Parse("2f96e651-0898-4f18-ab35-41096d91e1b5"),
-            "OPPO Find X9").GetAwaiter().GetResult();
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "TestHotspot").GetAwaiter().GetResult();
 
     private static long CreateSession(PersistenceContext context, long profileId) =>
         context.Sessions.AttachSessionAsync(new AttachSessionRequest(
             Guid.NewGuid().ToString("N"),
             1,
             profileId,
-            "2f96e651-0898-4f18-ab35-41096d91e1b5",
-            "OPPO Find X9",
-            "1A:44:DD:0E:E5:B0",
+            "11111111-1111-1111-1111-111111111111",
+            "TestHotspot",
+            "02:00:00:00:00:01",
             From)).GetAwaiter().GetResult();
 
     private static void InsertSnapshot(SqliteConnection connection, string operationId, long sessionId, long profileId)

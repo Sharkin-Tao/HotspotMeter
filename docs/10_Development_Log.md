@@ -127,7 +127,7 @@ dotnet new editorconfig
 
 | 项 | 结论 | 数值摘要 |
 | --- | --- | --- |
-| P1-1 | 通过 | SSID `OPPO Find X9`、BSSID `1A:44:DD:0E:E5:B0`，与系统一致 |
+| P1-1 | 通过 | SSID `TestHotspot`、BSSID `02:00:00:00:00:01`，与系统一致 |
 | P1-2 | 通过 | 结构体 1352/604/532；GUID 唯一映射 1 行，Type=71 |
 | P1-3 | 通过 | 150 MB 下载 → InOctets +161,933,750 B，比值 1.0295；BCL 交叉对比 16 MiB 时差 0 字节 |
 | P1-4 | 通过 | 空载 60 s 约 3 KB/s 背景流量，0 回退、0 缺帧 |
@@ -1110,4 +1110,18 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 测试：新增 `LanguageCatalogTests` 18 例；`dotnet build` 0/0；`dotnet test` **408/408**。
 - 运行时验证：首次启动 UIAutomation 选择 English 并写 `en-US`；取消不写；英文设置 `layout=ok texts=26`、统计 `layout=ok texts=44`、胶囊四档/自定义 `layout=ok`、菜单英文；运行中中英互切即时生效；英文 Stage5 自检全通过。证据 `artifacts/i18n-*`。
 - 限制：视觉引擎不可用，未人工目检；托盘菜单未实际展开；自动适配最简档按设计隐藏说明标签。
-- 文档：新增 `docs/11_Localization.md`；更新 docs/02 §2.7/§7.4、docs/04 §12、docs/07、docs/09 D-100～D-103、PROJECT_CONTEXT。
+- 文档：新增 `docs/13_Localization.md`；更新 docs/02 §2.7/§7.4、docs/04 §12、docs/07、docs/09 D-100～D-103、PROJECT_CONTEXT。
+
+## 2026-11-15 阶段 7：发布工程（0.1.0 便携版）
+
+- 基线：`main`，工作区干净，HEAD `6ce4f73`（另有合并提交 `2b0ceae`）；未 push。
+- 项目调查：App `net10.0-windows10.0.26100.0`、Windows 10 1809+、x64；SDK 10.0.402；依赖仅 Microsoft.Data.Sqlite、Logging.Abstractions、xUnit 等；数据目录 `%LOCALAPPDATA%\HotspotMeter`。
+- 发布模式：self-contained、win-x64、文件夹、非单文件、无 PDB；版本 0.1.0。`dotnet publish` 成功，目录 210,418,431 B（200.67 MiB，483 文件）。
+- 发布验证：目录内直接运行 `HotspotMeter.exe`，胶囊 `left=120 top=1020.7 135.3×44 dpi1.5`；`HOTSPOTMETER_UI_STATS` 统计窗 `980×700` 真实数据；退出码 0；历史库 37 会话/2 天/1179 快照保留。
+- 产物：`artifacts/release/HotspotMeter-win-x64.zip`（81,890,833 B，78.10 MiB）、`SHA256SUMS.txt`；ZIP 解压到 `verify-unzip` 后再次运行退出码 0。SHA-256 见 `docs/12_Release_Notes.md`。
+- 安装包：环境无 Inno Setup/NSIS，未擅自安装；便携版手动安装/卸载说明已写，安装/升级/卸载程序标记未验证（D-105）。
+- 隐私：README 统计截图含真实 SSID，已生成 `Traffic-Statistics-redacted.png` 并替换引用；原图保留本地、从版本库移除并加入 `.gitignore`；15 个代码/文档/测试文件的 SSID/BSSID/GUID 替换为 `TestHotspot`/`02:00:00:00:00:01`/`11111111-...`（D-107/D-108）。
+- 安全扫描：`git grep` 凭证无命中、无 `C:\Users\`、无外联代码、四项目依赖 0 已知漏洞；Git 历史无凭证，但仍有真实网络标识与未脱敏截图，属高风险历史残留，需授权后清理。
+- 文档：README 中英、`docs/11_Release_Checklist.md`、`docs/12_Release_Notes.md`、`docs/13_Localization.md`、PROJECT_CONTEXT、docs/02/04/05/08/09。
+- 验证：Release 构建 0 警告 0 错误；`dotnet test -c Release --no-build` **408/408**；未做安装程序、代码签名、干净虚拟机、混合 DPI/多显示器、24 h 长稳。
+- 结论：便携版可交付；整体“有条件进入发布”。新增决策 D-104～D-108。

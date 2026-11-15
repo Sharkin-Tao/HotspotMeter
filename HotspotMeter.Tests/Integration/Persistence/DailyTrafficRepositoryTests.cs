@@ -12,9 +12,9 @@ public class DailyTrafficRepositoryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
 
-    private static async Task<long> CreateProfileAsync(PersistenceContext context, string ssid = "OPPO Find X9")
+    private static async Task<long> CreateProfileAsync(PersistenceContext context, string ssid = "TestHotspot")
         => await context.Profiles.GetOrCreateAsync(
-            Guid.NewGuid(), Guid.Parse("2f96e651-0898-4f18-ab35-41096d91e1b5"), ssid);
+            Guid.NewGuid(), Guid.Parse("11111111-1111-1111-1111-111111111111"), ssid);
 
     private static DailyTrafficDelta Delta(
         long profileId,

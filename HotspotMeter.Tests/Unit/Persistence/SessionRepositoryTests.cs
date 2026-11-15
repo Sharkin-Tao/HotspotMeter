@@ -7,7 +7,7 @@ namespace HotspotMeter.Tests.Unit.Persistence;
 
 public class SessionRepositoryTests
 {
-    private static readonly Guid InterfaceGuid = Guid.Parse("2f96e651-0898-4f18-ab35-41096d91e1b5");
+    private static readonly Guid InterfaceGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     [Fact]
     public async Task Attach_CreatesSessionAndActiveMapping()
@@ -183,12 +183,12 @@ public class SessionRepositoryTests
             coreSessionId,
             profileId,
             InterfaceGuid.ToString("D"),
-            "OPPO Find X9",
-            "1A:44:DD:0E:E5:B0",
+            "TestHotspot",
+            "02:00:00:00:00:01",
             new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
     private static async Task<long> CreateProfileAsync(PersistenceContext context) =>
-        await context.Profiles.GetOrCreateAsync(Guid.NewGuid(), InterfaceGuid, "OPPO Find X9");
+        await context.Profiles.GetOrCreateAsync(Guid.NewGuid(), InterfaceGuid, "TestHotspot");
 
     private static string NewRunId() => Guid.NewGuid().ToString("N");
 }

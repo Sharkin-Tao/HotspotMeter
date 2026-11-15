@@ -218,7 +218,7 @@ public sealed class SchemaV3Tests : IDisposable
             connection,
             """
             INSERT INTO HotspotProfiles (ProfileKey, DisplayName, InterfaceGuid, Ssid, BssidEnforcement, CreatedAtUtc, LastSeenUtc)
-            VALUES ('2f96e65108984f18ab3541096d91e1b5', 'OPPO Find X9', '2f96e651-0898-4f18-ab35-41096d91e1b5', 'OPPO Find X9', 0,
+            VALUES ('11111111111111111111111111111111', 'TestHotspot', '11111111-1111-1111-1111-111111111111', 'TestHotspot', 0,
                     '2026-11-13T00:00:00.0000000+00:00', '2026-11-13T00:00:00.0000000+00:00');
             """);
 
@@ -226,7 +226,7 @@ public sealed class SchemaV3Tests : IDisposable
             connection,
             """
             INSERT INTO ConnectionSessions (ProfileId, InterfaceGuid, Ssid, StartedAtUtc, CreatedAtUtc)
-            VALUES (1, '2f96e651-0898-4f18-ab35-41096d91e1b5', 'OPPO Find X9',
+            VALUES (1, '11111111-1111-1111-1111-111111111111', 'TestHotspot',
                     '2026-11-13T00:00:00.0000000+00:00', '2026-11-13T00:00:00.0000000+00:00');
             """);
     }

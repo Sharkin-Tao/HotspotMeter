@@ -8,6 +8,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>HotspotMeter</AssemblyName>
     <RootNamespace>HotspotMeter.App</RootNamespace>
+    <!-- 首个正式发布版本；此前只有开发阶段提交，没有已发布版本号可继承。 -->
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <InformationalVersion>0.1.0</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\HotspotMeter.ico</ApplicationIcon>
     <!--

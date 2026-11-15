@@ -12,8 +12,8 @@
 | 3 | SQLite、会话管理与异常恢复 | **已完成（schema v3、检查点、结算、启动清扫）** |
 | 4 | 悬浮状态栏 | **已完成（四档/自定义、任务栏自动适配、置顶、位置记忆）** |
 | 5 | 独立流量统计窗口 | **已完成（含启动管理、逐程序归属、历史持久化）** |
-| 6 | 发布前审查与稳定性加固 | **已完成（2026-11-14，390 测试，已知限制见 05/07）** |
-| 7 | 完整测试、优化与发布 | 未开始（待用户验收阶段 6 后进入） |
+| 6 | 发布前审查与稳定性加固 | **已完成（2026-11-14，390 测试；i18n 后 408，已知限制见 05/07）** |
+| 7 | 完整测试、优化与发布 | **已完成（2026-11-15，便携 0.1.0 发布 + ZIP；安装包未制作）** |
 
 ---
 
@@ -200,6 +200,17 @@
 
 **退出标准**：00 文档第 8 节六条成功标准全部满足；发布包在干净机器上可运行；用户完成人工验收。
 
+### 阶段 7 实际执行结果（2026-11-15）
+
+- **功能完整性**：建立 `docs/11_Release_Checklist.md`，28 项功能映射到代码与测试；未删除功能、未改默认行为、未改 schema。
+- **发布配置**：`win-x64`、self-contained、文件夹发布、不含 PDB；版本 0.1.0。单文件未采用（WPF + SQLite 原生库解压/兼容性成本更高，见 D-104）。
+- **构建/测试**：Release `dotnet clean/restore/build` 0 警告 0 错误；`dotnet test -c Release --no-build` **408/408**。
+- **发布产物**：`artifacts/release/HotspotMeter-win-x64/`（200.67 MiB，483 文件）、`HotspotMeter-win-x64.zip`（78.10 MiB）、`SHA256SUMS.txt`；ZIP 解压到独立目录运行退出码 0，胶囊/统计/SQLite/历史保留均验证。
+- **安装/卸载**：环境无 Inno Setup/NSIS，未擅自安装；本轮只交付便携版，安装/升级/卸载程序标记“未验证”（D-105）。
+- **安全/隐私**：凭证、个人路径、外联、依赖漏洞扫描通过；真实 SSID/BSSID/GUID 已从当前工作区替换，统计截图已脱敏并更新 README；Git 历史仍含早期真实标识与未脱敏截图，未重写历史（D-107/D-108）。
+- **文档**：README 中英、`11_Release_Checklist`、`12_Release_Notes`、`13_Localization`、PROJECT_CONTEXT、02/04/05/09/10 更新。
+- **结论**：便携版可交付；因安装包未制作、Git 历史隐私残留未处理，整体为“有条件进入发布”。
+
 ### 阶段 7 交接清单
 
 - **Release 配置**：`net10.0-windows10.0.26100.0`，x64；需决定 self-contained 还是 framework-dependent（目标机是否预装 .NET 10 Desktop Runtime）。
@@ -224,8 +235,9 @@
 
 ## 当前阻塞/待确认
 
-1. 阶段 6 已完成代码与文档，等待用户验收 Debug 目录中的实际效果；未确认前不开始阶段 7 打包。
-2. 阶段 7 前必须确认：安装包形式（MSIX/Inno/便携 zip）、self-contained 还是 framework-dependent、卸载是否保留 `%LOCALAPPDATA%` 数据。
+1. 阶段 7 已完成便携 ZIP 与安全审查；等待用户验收发布包、决定是否补安装包。
+2. 安装包形式（Inno/MSIX）与代码签名证书仍未确定；环境缺少打包工具，未擅自安装。
 3. 04 文档第 9 节的保留期与导出问题仍未定。
-4. 07 文档列出的 7 项人工验收（开始菜单/任务栏、Explorer 重启、睡眠、多 DPI、Alt+F4、长稳）需在阶段 7 完成。
-5. `E:\hotspotmeter\HotspotMeter` 旧位置残留目录与 `E:\hotspotmeter-clone-git-backup` 的最终处置（见 `docs/09` D-025）。
+4. Git 历史中的真实 SSID/BSSID/GUID 与未脱敏截图需要仓库所有者授权后清理（`git filter-repo` + 强推），本轮未执行。
+5. 07 文档列出的实机验收（开始菜单/任务栏、Explorer 重启、睡眠、多 DPI、Alt+F4、24 h 长稳）仍需在目标机完成。
+6. `E:\hotspotmeter\HotspotMeter` 旧位置残留目录与 `E:\hotspotmeter-clone-git-backup` 的最终处置（见 `docs/09` D-025）。

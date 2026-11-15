@@ -216,3 +216,35 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 2. 英文界面人工肉眼终检（本会话视觉引擎失败，仅有布局/像素证据）。
 3. 200% DPI、最小窗口尺寸、超长英文程序名组合。
 4. 第三语言扩展不在范围。
+
+## 阶段 7 发布验收记录（2026-11-15）
+
+### 构建与测试
+
+| 命令 | 结果 |
+| --- | --- |
+| `dotnet clean/build HotspotMeter.sln -c Release` | 0 警告 / 0 错误 |
+| `dotnet test HotspotMeter.sln -c Release --no-build` | **408 通过 / 0 失败 / 0 跳过** |
+| `dotnet publish HotspotMeter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false` | 成功 |
+
+### 发布产物验证
+
+- 发布目录 `artifacts/release/HotspotMeter-win-x64/`：483 文件、210,418,431 B；无 `.pdb/.db/.log`；exe `FileVersion=0.1.0.0`。
+- 直接运行发布目录 exe：退出码 0；胶囊 `left=120 top=1020.7 actual=135.3×44 dpi=1.5`；Minimal 档隐藏说明标签，数值/速度正常。
+- `HOTSPOTMETER_UI_STATS`：统计窗口 980×700，真实历史与目标热点正常，深色标题栏。
+- SQLite：37 会话、2 个自然日、1179 快照；启动后检查点增长，退出后无 Active 会话；升级/覆盖程序目录不丢 `%LOCALAPPDATA%` 数据。
+- ZIP `artifacts/release/HotspotMeter-win-x64.zip`（81,890,833 B）解压到 `artifacts/release/verify-unzip` 后再次运行，退出码 0；SHA-256 与 `SHA256SUMS.txt` 一致。
+
+### 安全/隐私
+
+- 工作区凭证、`C:\Users\`、外联代码、依赖漏洞扫描均无命中；真实 SSID/BSSID/GUID 已替换为示例值；README 统计截图已脱敏。
+- Git 历史仍含早期真实网络标识与未脱敏截图，未重写，标记为高风险历史残留。
+
+### 未验证
+
+1. 安装程序安装/升级/卸载（环境无 Inno Setup/NSIS，未制作安装包）。
+2. 代码签名、SmartScreen 行为。
+3. 干净虚拟机/全新 Windows 用户环境。
+4. 多显示器混合 DPI、不同屏幕分辨率。
+5. 24 小时以上长稳与内存/句柄增长。
+6. 真实鼠标拖拽、托盘菜单展开、Explorer 重启、睡眠唤醒。

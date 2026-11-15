@@ -184,7 +184,9 @@ FreeMibTable(tablePtr);
 ## 9. 阶段 1 验证结果（2026-11-12 实机执行，全部结论来自真实运行）
 
 原型：`tools/ApiProbe/`（net10.0-windows 控制台，**不加入主解决方案**，不影响产品构建）。
-环境：Windows 11 26200 x64；无线网卡 Intel Wi-Fi 6 AX203；目标热点 `OPPO Find X9`（5 GHz，866.7 Mbps，BSSID `1A:44:DD:0E:E5:B0`）；GUID `2f96e651-0898-4f18-ab35-41096d91e1b5`，ifIndex 5，LUID `0x0047008000000000`。
+环境：Windows 11 26200 x64；无线网卡 Intel Wi-Fi 6 AX203；目标热点 `TestHotspot`（5 GHz，866.7 Mbps，BSSID `02:00:00:00:00:01`）；GUID `11111111-1111-1111-1111-111111111111`，ifIndex 5，LUID `0x0047008000000000`。
+
+> 发布前隐私处理：SSID、BSSID、无线接口 GUID 已替换为示例值；原始实测截图与日志保留在开发机（不入库）。替换不改变任何验证结论。
 
 | 编号 | 验证项 | 结论 | 关键证据（`tools/ApiProbe/out/`） |
 | --- | --- | --- | --- |

@@ -31,8 +31,8 @@ public sealed class MonitorEngineTests
             CapturedAt,
             BaselineTick,
             BootSignatures.ComputeBootEpoch(CapturedAt, BaselineTick),
-            "OPPO Find X9",
-            "1A:44:DD:0E:E5:B0");
+            "TestHotspot",
+            "02:00:00:00:00:01");
 
     private static ResumeContext CreateContext(BaselineState baseline)
         => new(baseline, SessionId: 42, SessionDownloadBytes: 100, SessionUploadBytes: 50, SessionStartedAtUtc: CapturedAt.AddMinutes(-5));

@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 6 已完成；中英双语（首次启动选择、设置/统计/胶囊/托盘即时切换）已实现（2026-11-15），等待用户验收** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置 + 中英双语 + 首次启动语言选择；阶段 6 修复见下方“阶段 6 实际结果”，国际化见“中英双语实际结果”；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe、ShellZOrderProbe 均不入解决方案 |
-| 未实现 | 周/月汇总（当前今日/最近 7 天/单日）、程序图标提取、逐应用历史数据持久化（按查询日实时读 Windows API）、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装包与发布流程（阶段 7） |
-| 下一次要做的事 | 用户验收中英双语：①删除/备份 `ui-state.json` 的 `Language` 后启动，应出现语言选择窗；②选择 English 后检查设置/统计/胶囊/托盘；③运行中在设置里切换语言，所有已开窗口即时变化；④重启后不再弹选择窗。验收后进入阶段 7 打包与发布准备 |
+| 当前阶段 | **阶段 7 发布工程已完成（2026-11-15，0.1.0 便携版）；等待用户验收发布包，并决定安装包与 Git 历史清理** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置 + 中英双语 + 首次启动语言选择；阶段 6 修复见“阶段 6 实际结果”，国际化见“中英双语实际结果”，发布见“阶段 7 实际结果”；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe、ShellZOrderProbe 均不入解决方案 |
+| 未实现 | 周/月汇总（当前今日/最近 7 天/单日）、程序图标提取、逐应用历史数据持久化（按查询日实时读 Windows API）、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装程序/自动更新/代码签名；发布产物为便携 ZIP |
+| 下一次要做的事 | 用户验收 0.1.0 便携 ZIP：解压运行、检查胶囊/统计/托盘/设置/自启；确认是否需要 Inno Setup 安装包与代码签名；确认是否授权清理 Git 历史中的真实 SSID/BSSID/GUID 与未脱敏截图 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -241,7 +241,21 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **首次启动**：`App.OnStartup` 先读 `ui-state.json` 的 `Language`；有效则直接使用，缺失/非法则先单实例、再弹 `LanguageWindow`（460×340 深色双语卡片）。取消/关闭直接退出且**不写入**语言；选择后写入现有配置、切换文化并重新加载。选择发生在主窗口创建前，无中文闪烁。
 - **设置/统计/胶囊/托盘**：设置窗新增“语言”卡（780×700），全部静态与状态文案资源化；统计窗 44 条文本、图表/悬停/表头/空错状态全部资源化；胶囊标签、速度标签、右键菜单、固定文字、上次会话前缀资源化；托盘菜单改为 `ApplyLanguage()` 就地更新文本后 `Refresh()`。
 - **验证**：构建 0/0；`dotnet test` **408/408**（含 18 个本地化用例）。UIAutomation 首次启动选择 English 后配置写入 `en-US`；英文设置窗 `layout=ok texts=26`、英文统计窗 `layout=ok texts=44`、英文胶囊四档/自定义 `layout=ok`、菜单 `Traffic Statistics | Lock Position | Resize… | Exit`；运行中中英互切即时生效；取消语言窗进程退出且配置无 `Language`。证据见 `artifacts/i18n-*.txt/png`。
-- **限制**：本会话视觉引擎不可用，英文界面靠 UIAutomation/布局断言/像素验证，未人工肉眼终检；托盘菜单英文未实际展开（图标在隐藏区），仅代码与 `MenuItemTexts` 级验证；自动适配最简档按设计隐藏说明标签。详见 `docs/11_Localization.md`。
+- **限制**：本会话视觉引擎不可用，英文界面靠 UIAutomation/布局断言/像素验证，未人工肉眼终检；托盘菜单英文未实际展开（图标在隐藏区），仅代码与 `MenuItemTexts` 级验证；自动适配最简档按设计隐藏说明标签。详见 `docs/13_Localization.md`。
+
+### 阶段 7 实际结果（2026-11-15，发布工程）
+
+- **发布基线**：`main`，工作区干净；App `net10.0-windows10.0.26100.0`、Windows 10 1809+、x64；未改 schema、未删功能、未改默认行为。
+- **构建/测试**：Release `dotnet clean/restore/build` 0 警告 0 错误；`dotnet test -c Release --no-build` **408/408**。
+- **发布模式**：self-contained、win-x64、文件夹、非单文件、无 PDB；版本 **0.1.0**。选择理由见 D-104。
+- **产物**：`artifacts/release/HotspotMeter-win-x64/`（210,418,431 B / 200.67 MiB / 483 文件）、`HotspotMeter-win-x64.zip`（81,890,833 B / 78.10 MiB）、`SHA256SUMS.txt`。
+  - ZIP SHA-256：`2753fb8ae31c46173313b0b3842b1d71eb1295d53b51dad4f80ccdce98708f01`
+  - `HotspotMeter.exe` SHA-256：`0c766d93f62e22377b5648d9e590a0840294944518fc6db1c504adfe6cb42931`
+- **独立运行**：发布目录与 ZIP 解压目录均直接运行退出码 0；胶囊 `120,1020.7 / 135.3×44 / dpi1.5`；统计窗 `980×700` 读取真实历史；SQLite 37 会话/2 天/1179 快照保留。
+- **安装包**：环境无 Inno Setup/NSIS，未擅自安装；仅交付便携 ZIP，安装/升级/卸载程序标记“未验证”（D-105）。
+- **隐私/安全**：凭证、个人路径、外联、依赖漏洞扫描通过；当前工作区 SSID/BSSID/GUID 已替换为示例值，README 统计截图已脱敏。**Git 历史仍含早期真实标识与未脱敏截图**，未重写历史，属高风险残留（D-107/D-108）。
+- **文档**：`docs/11_Release_Checklist.md`、`docs/12_Release_Notes.md`、`docs/13_Localization.md`、README 中英，以及 02/04/05/08/09/10 与本文。
+- **限制**：未签名；无安装程序；干净虚拟机/混合 DPI/多显示器/24 h 长稳未验证；开始菜单展开期间仍受 Windows band 6 限制。
 
 ## 3. 文档索引与阅读顺序
 
@@ -258,7 +272,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 | [docs/08_Development_Roadmap.md](docs/08_Development_Roadmap.md) | 阶段 0–7 的目标与退出标准 | 规划下一步 |
 | [docs/09_Decisions.md](docs/09_Decisions.md) | 架构决策记录（ADR） | 想改已有选择前 |
 | [docs/10_Development_Log.md](docs/10_Development_Log.md) | 每次工作的操作与结果 | 接手/复盘 |
-| [docs/11_Localization.md](docs/11_Localization.md) | 中英资源组织、切换机制、配置与维护方式 | 改任何界面文字前 |
+| [docs/13_Localization.md](docs/13_Localization.md) | 中英资源组织、切换机制、配置与维护方式 | 改任何界面文字前 |
 
 ## 4. 已确认的事实（可依赖）
 
@@ -286,6 +300,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 22. 阶段 6 统计口径已验证：统计查询按当前目标热点 `ProfileKey` 过滤；逐程序合计与总量差额只解释为“未归属/系统”，不做分摊。
 23. 阶段 6 Release `dotnet clean/build -c Release` 0 警告 0 错误，`dotnet test -c Release --no-build` 390/390；Debug 同。
 24. 中英双语（2026-11-15）已实现并验证：首次无 `Language` 时弹选择窗，选择写入 `ui-state.json`；取消不写；非法值按未选择处理并回退 zh-CN；运行中切换设置/统计/胶囊/托盘即时生效；`dotnet test` 408/408。英文界面经 UIAutomation/布局断言/像素验证，未人工目检。
+25. 阶段 7 发布（2026-11-15）：self-contained win-x64 文件夹 210,418,431 B（200.67 MiB，483 文件），`HotspotMeter.exe` 544,768 B、`FileVersion=0.1.0.0`；ZIP 81,890,833 B（78.10 MiB），SHA-256 `2753fb8a…98708f01`；exe SHA-256 `0c766d93…cb42931`。
+26. 发布目录与 ZIP 解压目录均独立运行成功：退出码 0，胶囊 `120,1020.7 / 135.3×44 / dpi1.5`，统计窗 `980×700` 读取真实历史；SQLite 37 会话/2 天/1179 快照保留，说明升级不写安装目录、不丢 `%LOCALAPPDATA%` 数据。
+27. 安全扫描：工作区凭证/个人路径/外联/依赖漏洞均无命中；真实 SSID/BSSID/GUID 已替换为示例值，README 截图已脱敏。Git 历史仍含早期真实网络标识与未脱敏截图，属高风险历史残留，未重写。
+28. 发布环境无 Inno Setup/NSIS，未擅自安装；本轮只交付便携 ZIP，安装包与安装/卸载程序未验证（D-105）。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -321,8 +339,8 @@ dotnet run --project tools/ApiProbe/ApiProbe.csproj -c Release -- continuity --s
 
 # 阶段 2 控制台宿主（独立于解决方案）
 dotnet run --project tools/MonitorHost -- --list
-dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 60
-dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --json
+dotnet run --project tools/MonitorHost -- --ssid "TestHotspot" --seconds 60
+dotnet run --project tools/MonitorHost -- --ssid "TestHotspot" --seconds 20 --json
 ```
 
 ## 8. 变更记录
@@ -352,3 +370,4 @@ dotnet run --project tools/MonitorHost -- --ssid "OPPO Find X9" --seconds 20 --j
 | 2026-11-14 | 阶段 5.1 修复：前台监听不再按 Shell 类名过滤，250 ms 后单次重断言；开始菜单展开期间受 band 6 限制、关闭后自动恢复；统计窗口接入 `DarkTitleBar`；390 测试通过；新增 D-090～D-092 |
 | 2026-11-14 | 阶段 6：发布前审查与加固（退出死锁、统计按 ProfileKey 过滤、DB 健康分类、synchronous=FULL、统计竞态取消、托盘 TaskbarCreated、原子配置、设置窗夹取、目标热点重试、SQL 注释运行时缺陷）；Debug/Release 390 测试通过；新增 D-093～D-099 |
 | 2026-11-15 | 中英双语：`LanguageCatalog`/`LocalizationService`/`{loc:Tr}`、首次启动语言选择窗、`ui-state.Language`、设置/统计/胶囊/托盘即时切换；408 测试通过；新增 D-100～D-103、docs/11 |
+| 2026-11-15 | 阶段 7 发布：0.1.0 self-contained win-x64 文件夹 + 便携 ZIP + SHA256；发布目录与解压目录运行验证；截图脱敏、SSID/BSSID/GUID 替换、安全扫描；新增 docs/11–13、D-104～D-108；安装包未制作（工具缺失） |

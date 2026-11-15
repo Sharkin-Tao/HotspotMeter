@@ -11,6 +11,7 @@
 ![平台](https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
 ![开发语言](https://img.shields.io/badge/开发语言-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
 ![开发框架](https://img.shields.io/badge/开发框架-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
+![版本](https://img.shields.io/badge/版本-0.1.0-30D158?style=flat-square)
 ![数据库](https://img.shields.io/badge/数据库-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
 **简体中文** | [English](README.md)
@@ -43,7 +44,9 @@ HotspotMeter 是一款面向 Windows 用户的桌面流量监控工具，帮助�
 
 | 桌面悬浮胶囊 | 流量统计窗口 |
 |:---:|:---:|
-| <img src="./Desktop%20Floating%20Capsule.png" width="400" alt="桌面悬浮胶囊"> | <img src="./Traffic%20Statistics.png" width="400" alt="流量统计窗口"> |
+| <img src="./Desktop%20Floating%20Capsule.png" width="400" alt="桌面悬浮胶囊"> | <img src="./Traffic-Statistics-redacted.png" width="400" alt="流量统计窗口"> |
+
+*统计窗口截图中的热点名称已替换为占位符，其余内容来自真实运行。*
 
 ## 🛠️ 技术栈
 
@@ -56,25 +59,66 @@ HotspotMeter 是一款面向 Windows 用户的桌面流量监控工具，帮助�
 
 ## 📋 系统要求
 
-- Windows 系统
-- .NET Desktop Runtime（具体版本要求以正式发布版本为准）
+- **Windows 10 1809（build 17763）及以上，或 Windows 11**，x64。
+- 发布的**自包含**版本不要求单独安装 .NET Desktop Runtime。
+- 从源码构建需要 **.NET 10 SDK**（项目目标框架为 `net10.0-windows10.0.26100.0`）。
+- 正常使用不要求管理员权限；可选“开机自启”只写入当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`。
 
-## 🚀 获取与构建
+## 🚀 安装与运行
 
-项目目前可通过源码获取和构建。
+### 便携版 ZIP（当前发布形式）
+
+1. 从发布附件下载 `HotspotMeter-win-x64.zip`。
+2. 解压到你有写权限的目录，例如 `%LOCALAPPDATA%\Programs\HotspotMeter`。
+3. 运行 `HotspotMeter.exe`。
+4. 首次启动选择 **简体中文** 或 **English**；选择会被记住，之后可在设置中切换。
+
+ZIP 为自包含版本，请保持解压目录中的文件完整。目前**没有安装程序**，采用便携、当前用户级的方式，避免对系统做全局修改。具体构建与验证状态见 `docs/12_Release_Notes.md`。
+
+### 从源码构建
 
 ```bash
 git clone https://github.com/Sharkin-Tao/HotspotMeter.git
-```
-
-使用 Visual Studio 或 .NET CLI 打开项目并构建。
-
-```bash
+cd HotspotMeter
 dotnet restore
 dotnet build -c Release
+dotnet test -c Release
 ```
 
-正式发布后，将在 GitHub Releases 页面提供可用的程序包。
+生成同样的便携版本：
+
+```bash
+dotnet publish HotspotMeter.App -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false \
+  -o artifacts/release/HotspotMeter-win-x64
+```
+
+## 📊 数据存储
+
+HotspotMeter 将用户数据保存在程序目录之外：
+
+| 数据 | 位置 |
+|---|---|
+| SQLite 历史数据库 | `%LOCALAPPDATA%\HotspotMeter\Database\hotspotmeter.db` |
+| 窗口与设置状态（`ui-state.json`） | `%LOCALAPPDATA%\HotspotMeter\ui-state.json` |
+| 日志（仅在诊断/启用时产生） | `%LOCALAPPDATA%\HotspotMeter\logs\` |
+
+安装目录**不包含**数据库、日志或个人配置，因此替换程序目录不会覆盖历史记录。数据库中包含本机流量历史和热点配置信息，分享诊断信息时请按个人数据处理。
+
+## 🗑️ 卸载
+
+1. 从托盘菜单选择 **退出**。
+2. 如果开启过“开机自启”，先在设置中关闭（会删除本程序自己的 `Run` 项）。
+3. 删除解压后的程序目录。
+4. 可选：删除 `%LOCALAPPDATA%\HotspotMeter` 以清除历史与设置。程序有意不自动删除该目录，方便重装后保留历史。
+
+## ⚠️ 已知限制
+
+- 只统计你选定热点对应的 Wi-Fi 网卡，不叠加 VPN、虚拟网卡或其他接口；数据是电脑侧网卡字节数，可能与中国移动等运营商的计费流量不同。
+- 逐程序归属由 Windows 提供，可能不完整；未归属流量单独展示，不会分摊给应用。
+- Windows 11 的部分 Shell 界面（展开的开始菜单/搜索、UAC 安全桌面、锁屏）位于比普通置顶窗口更高的窗口层级，胶囊无法保证显示在其上方；这些界面关闭后会恢复。
+- 当前程序未签名，首次运行可能出现 Windows SmartScreen 提示。
+- 当前环境无法可靠制作安装包（缺少 Inno Setup/NSIS），因此**安装/卸载程序未验证**；支持方式是上述便携 ZIP 与手动卸载。
 
 ## 🐛 问题反馈
 

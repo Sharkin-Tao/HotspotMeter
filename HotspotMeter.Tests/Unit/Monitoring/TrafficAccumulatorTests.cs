@@ -256,7 +256,7 @@ public sealed class TrafficAccumulatorTests
     {
         var accumulator = NewAccumulator();
         var context = new ResumeContext(
-            new BaselineState(TestData.InterfaceGuid, TestData.Luid, 1000, 500, DateTimeOffset.UnixEpoch, 5_000_000, DateTimeOffset.UnixEpoch.AddMilliseconds(-5_000_000), "OPPO Find X9", null),
+            new BaselineState(TestData.InterfaceGuid, TestData.Luid, 1000, 500, DateTimeOffset.UnixEpoch, 5_000_000, DateTimeOffset.UnixEpoch.AddMilliseconds(-5_000_000), "TestHotspot", null),
             SessionId: 7,
             SessionDownloadBytes: 100,
             SessionUploadBytes: 50,
@@ -371,7 +371,7 @@ public sealed class TrafficAccumulatorTests
 
     private static ResumeContext CreateResumeContext(long sessionId)
         => new(
-            new BaselineState(TestData.InterfaceGuid, TestData.Luid, 1000, 500, DateTimeOffset.UnixEpoch, 5_000_000, DateTimeOffset.UnixEpoch.AddMilliseconds(-5_000_000), "OPPO Find X9", null),
+            new BaselineState(TestData.InterfaceGuid, TestData.Luid, 1000, 500, DateTimeOffset.UnixEpoch, 5_000_000, DateTimeOffset.UnixEpoch.AddMilliseconds(-5_000_000), "TestHotspot", null),
             sessionId,
             SessionDownloadBytes: 100,
             SessionUploadBytes: 50,
@@ -388,7 +388,7 @@ public sealed class TrafficAccumulatorTests
         Assert.NotNull(baseline);
         Assert.Equal(1000UL, baseline!.InOctets);
         Assert.Equal(TestData.Luid, baseline.InterfaceLuid);
-        Assert.Equal("OPPO Find X9", baseline.Ssid);
+        Assert.Equal("TestHotspot", baseline.Ssid);
         Assert.Equal(TestData.InterfaceGuid, baseline.InterfaceGuid);
     }
 

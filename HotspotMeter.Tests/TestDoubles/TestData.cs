@@ -5,7 +5,7 @@ namespace HotspotMeter.Tests.TestDoubles;
 /// <summary>测试用的固定目标与帧构造器，避免每个用例重复样板。</summary>
 internal static class TestData
 {
-    public static readonly Guid InterfaceGuid = Guid.Parse("2f96e651-0898-4f18-ab35-41096d91e1b5");
+    public static readonly Guid InterfaceGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     public static readonly Guid OtherInterfaceGuid = Guid.Parse("9a7b2c31-1111-2222-3333-444455556666");
 
@@ -14,11 +14,11 @@ internal static class TestData
     public static HotspotTarget Target { get; } = new(
         Guid.Parse("11111111-1111-1111-1111-111111111111"),
         InterfaceGuid,
-        "OPPO Find X9");
+        "TestHotspot");
 
     public static HotspotConnection Connection(
-        string? bssid = "1A:44:DD:0E:E5:B0",
-        string ssid = "OPPO Find X9",
+        string? bssid = "02:00:00:00:00:01",
+        string ssid = "TestHotspot",
         ulong speedBps = 866_700_000,
         Guid? guid = null)
         => new(guid ?? InterfaceGuid, ssid, bssid, speedBps, speedBps);

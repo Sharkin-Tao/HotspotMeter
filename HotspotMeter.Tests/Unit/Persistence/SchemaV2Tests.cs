@@ -10,7 +10,7 @@ namespace HotspotMeter.Tests.Unit.Persistence;
 /// </summary>
 public class SchemaV2Tests
 {
-    private const string InterfaceGuid = "2f96e651-0898-4f18-ab35-41096d91e1b5";
+    private const string InterfaceGuid = "11111111-1111-1111-1111-111111111111";
     private const string StartedAt = "2026-01-01T00:00:00.0000000Z";
     private const string EndedAt = "2026-01-01T01:00:00.0000000Z";
     private const string TimeZoneId = "Asia/Shanghai";
@@ -83,8 +83,8 @@ public class SchemaV2Tests
         var profileB = InsertProfile(connection, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
         // 未确认：两个 Profile 可以同时观察同一个 BSSID（换 Profile / 同名设备过渡期）。
-        InsertBssid(connection, profileA, "1A:44:DD:0E:E5:B0", confirmed: false);
-        InsertBssid(connection, profileB, "1A:44:DD:0E:E5:B0", confirmed: false);
+        InsertBssid(connection, profileA, "02:00:00:00:00:01", confirmed: false);
+        InsertBssid(connection, profileB, "02:00:00:00:00:01", confirmed: false);
 
         // 确认后：全局唯一，第二个 Profile 不能再确认同一个 BSSID。
         InsertBssid(connection, profileA, "1A:44:DD:0E:E5:B1", confirmed: true);
@@ -138,7 +138,7 @@ public class SchemaV2Tests
             """
             INSERT INTO ConnectionSessions
                 (ProfileId, SessionStatus, InterfaceGuid, Ssid, StartedAtUtc, CreatedAtUtc, LastBaselineCapturedAtUtc)
-            VALUES ($pid, 0, $guid, 'OPPO Find X9', $started, $started, $started);
+            VALUES ($pid, 0, $guid, 'TestHotspot', $started, $started, $started);
             """,
             ("$pid", profileId),
             ("$guid", InterfaceGuid),
@@ -274,7 +274,7 @@ public class SchemaV2Tests
         using var connection = CreateMigratedConnection(temp);
 
         Assert.Throws<SqliteException>(() =>
-            InsertBssid(connection, 9999, "1A:44:DD:0E:E5:B0", confirmed: false));
+            InsertBssid(connection, 9999, "02:00:00:00:00:01", confirmed: false));
     }
 
     private static SqliteConnection CreateMigratedConnection(TempDirectory temp)
@@ -292,7 +292,7 @@ public class SchemaV2Tests
             """
             INSERT INTO HotspotProfiles
                 (ProfileKey, DisplayName, InterfaceGuid, Ssid, CreatedAtUtc, LastSeenUtc)
-            VALUES ($key, '手机热点', $guid, 'OPPO Find X9', $now, $now);
+            VALUES ($key, '手机热点', $guid, 'TestHotspot', $now, $now);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$key", profileKey);
@@ -332,7 +332,7 @@ public class SchemaV2Tests
             INSERT INTO ConnectionSessions
                 (ProfileId, SessionStatus, InterfaceGuid, Ssid, StartedAtUtc, CreatedAtUtc,
                  EndedAtUtc, EndReason, ResumeOutcome)
-            VALUES ($pid, $status, $guid, 'OPPO Find X9', $started, $started, $ended, $reason, $outcome);
+            VALUES ($pid, $status, $guid, 'TestHotspot', $started, $started, $ended, $reason, $outcome);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$pid", profileId);

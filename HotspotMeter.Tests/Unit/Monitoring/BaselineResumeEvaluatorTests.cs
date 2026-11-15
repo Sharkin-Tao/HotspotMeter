@@ -14,7 +14,7 @@ public sealed class BaselineResumeEvaluatorTests
         ulong outOctets = 500,
         DateTimeOffset? capturedAt = null,
         ulong luid = TestData.Luid,
-        string ssid = "OPPO Find X9")
+        string ssid = "TestHotspot")
     {
         var at = capturedAt ?? DateTimeOffset.UnixEpoch;
         return new BaselineState(
@@ -26,7 +26,7 @@ public sealed class BaselineResumeEvaluatorTests
             tickCount64,
             BootSignatures.ComputeBootEpoch(at, tickCount64),
             ssid,
-            "1A:44:DD:0E:E5:B0");
+            "02:00:00:00:00:01");
     }
 
     [Fact]

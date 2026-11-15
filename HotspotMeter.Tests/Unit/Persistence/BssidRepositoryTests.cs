@@ -5,8 +5,8 @@ namespace HotspotMeter.Tests.Unit.Persistence;
 
 public class BssidRepositoryTests
 {
-    private const string Bssid = "1A:44:DD:0E:E5:B0";
-    private static readonly Guid InterfaceGuid = Guid.Parse("2f96e651-0898-4f18-ab35-41096d91e1b5");
+    private const string Bssid = "02:00:00:00:00:01";
+    private static readonly Guid InterfaceGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -124,7 +124,7 @@ public class BssidRepositoryTests
     [Theory]
     [InlineData("")]
     [InlineData("1A:44:DD:0E:E5")]
-    [InlineData("1A:44:DD:0E:E5:B0:CC")]
+    [InlineData("02:00:00:00:00:01:CC")]
     [InlineData("1A-44-DD-0E-E5-B0")]
     [InlineData("GG:44:DD:0E:E5:B0")]
     public async Task RecordObservation_RejectsInvalidFormat(string bssid)
@@ -137,5 +137,5 @@ public class BssidRepositoryTests
     }
 
     private static async Task<long> CreateProfileAsync(PersistenceContext context) =>
-        await context.Profiles.GetOrCreateAsync(Guid.NewGuid(), InterfaceGuid, "OPPO Find X9");
+        await context.Profiles.GetOrCreateAsync(Guid.NewGuid(), InterfaceGuid, "TestHotspot");
 }

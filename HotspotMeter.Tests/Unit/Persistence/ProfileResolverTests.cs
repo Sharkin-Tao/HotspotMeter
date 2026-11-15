@@ -5,7 +5,7 @@ namespace HotspotMeter.Tests.Unit.Persistence;
 
 public class ProfileResolverTests
 {
-    private static readonly Guid InterfaceGuid = Guid.Parse("2f96e651-0898-4f18-ab35-41096d91e1b5");
+    private static readonly Guid InterfaceGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     [Fact]
     public async Task GetOrCreate_IsStable_ForSameGuid()
@@ -13,8 +13,8 @@ public class ProfileResolverTests
         using var context = new PersistenceContext();
         var coreId = Guid.NewGuid();
 
-        var first = await context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "OPPO Find X9");
-        var second = await context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "OPPO Find X9");
+        var first = await context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "TestHotspot");
+        var second = await context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "TestHotspot");
 
         Assert.Equal(first, second);
         Assert.Equal(1, context.Count("HotspotProfiles"));
@@ -41,11 +41,11 @@ public class ProfileResolverTests
         using var context = new PersistenceContext();
         var coreId = Guid.NewGuid();
 
-        var first = await context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "OPPO Find X9");
+        var first = await context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "TestHotspot");
 
         // 模拟进程重启：新的解析器没有任何缓存，只能依赖数据库。
         var restarted = new ProfileResolver(context.Factory);
-        var second = await restarted.GetOrCreateAsync(coreId, InterfaceGuid, "OPPO Find X9");
+        var second = await restarted.GetOrCreateAsync(coreId, InterfaceGuid, "TestHotspot");
 
         Assert.Equal(first, second);
         Assert.Equal(1, context.Count("HotspotProfiles"));
@@ -58,7 +58,7 @@ public class ProfileResolverTests
         var coreId = Guid.NewGuid();
 
         var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
-            context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "OPPO Find X9"))));
+            context.Profiles.GetOrCreateAsync(coreId, InterfaceGuid, "TestHotspot"))));
 
         Assert.Single(results.Distinct());
         Assert.Equal(1, context.Count("HotspotProfiles"));

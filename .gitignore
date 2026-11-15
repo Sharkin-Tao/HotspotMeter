@@ -509,3 +509,6 @@ tools/ApiProbe/out/
 
 # 探针输出（防止从仓库根目录运行时把证据误入库）
 /out/
+
+# Unredacted local screenshot: kept out of the repository
+/Traffic Statistics.png

@@ -94,3 +94,35 @@
 - 决策：`LocalizationService.SetLanguage` 触发 `PropertyChanged("Item[]")`/`LanguageChanged`；XAML 静态文字用 `{loc:Tr}` 自动刷新；ViewModel 派生文案通过 `RefreshLanguage()/Refresh()` 重算；统计窗重跑 `LoadAsync()`；托盘只改 `Text` 后 `Refresh()`。
 - 理由：保持窗口状态、滚动位置、输入内容和单实例；避免关闭重开导致监控/查询抖动。
 - 边界：运行期提示在生成时取词，不回溯已显示的历史文本；托盘菜单未做 UI 自动化展开验证。
+
+## D-104 发布采用 self-contained 文件夹，不采用单文件
+- 状态：已决定并执行（2026-11-15）
+- 问题：需要让没有 .NET Desktop Runtime 的普通 Windows 用户直接运行；同时 WPF、SQLite 原生库与单文件打包存在兼容性/启动成本。
+- 决策：`win-x64`、`--self-contained true`、`PublishSingleFile=false`、不输出 PDB；生成约 200.67 MiB 文件夹，再压成便携 ZIP。
+- 理由：文件夹模式不依赖开发机、无运行时安装要求；原生库按目录加载，排障直观；ZIP 体积 78.10 MiB，可接受。
+- 代价：解压后文件较多；未签名时 SmartScreen 可能提示；没有自动更新。
+
+## D-105 本轮不制作安装包
+- 状态：已决定并记录（2026-11-15）
+- 事实：环境中没有 Inno Setup（`ISCC`）或 NSIS（`makensis`），项目规则禁止擅自安装第三方工具。
+- 决策：只交付便携 ZIP；安装/升级/卸载程序标记为“未验证”，不生成无法工作的空壳安装包。
+- 后续：若需要安装包，先由用户确认工具与签名证书，再用 Inno Setup 做 per-user 安装、保留 `%LOCALAPPDATA%` 数据、卸载时只删除程序目录与自启项。
+
+## D-106 首个正式版本号 0.1.0
+- 状态：已执行（2026-11-15）
+- 事实：此前项目没有版本号/标签规范，App 未设置程序集版本。
+- 决策：`Version=0.1.0`、`AssemblyVersion=0.1.0.0`、`FileVersion=0.1.0.0`、`InformationalVersion=0.1.0`；README、Release Notes 与安装包（未制作）统一使用 0.1.0。
+- 说明：`ProductVersion` 会带 `+<commit>` 的 SourceRevision 元数据，属于正常 SemVer 构建元数据，不改变版本优先级。
+
+## D-107 截图脱敏保留原图，不重写 Git 历史
+- 状态：已执行并标注风险（2026-11-15）
+- 问题：`Traffic Statistics.png` 含真实 SSID 与真实流量；该图自 `d4234e5` 起已进入 Git 历史。
+- 决策：用 System.Drawing 在原图副本上遮住热点行并写“目标热点：示例热点”，生成 `Traffic-Statistics-redacted.png`，README 改用新图；原图保留在开发者本地，但用 `git rm --cached` 从版本库移除并加入 `.gitignore`（不覆盖、不删除本地文件）；不 `filter-repo`、不强制推送。
+- 风险：历史提交仍保留原图与真实网络标识；公开仓库存在“高”级隐私残留。清理需仓库所有者明确授权后重写历史并轮换相关网络标识。
+- 边界：发布 ZIP 不包含任何截图/数据库/日志，泄露面仅限源码仓库。
+
+## D-108 测试夹具与文档中的真实网络标识统一替换
+- 状态：已执行（2026-11-15）
+- 决策：SSID → `TestHotspot`，BSSID → `02:00:00:00:00:01`，无线接口 GUID → `11111111-1111-1111-1111-111111111111`；覆盖测试夹具、docs/05、docs/10、PROJECT_CONTEXT 与 `tools/MonitorHost` 示例。
+- 理由：测试不需要真实设备标识，替换不改变断言与验证结论；降低源码泄露面。
+- 验证：替换后 Release 构建 0/0、408/408 测试通过。
