@@ -1,18 +1,23 @@
-# HotspotMeter
+# <div align="center">HotspotMeter</div>
+
+<div align="center">
 
 ### Windows 手机热点流量监控工具
 
 **一眼掌握热点流量，轻松了解网络使用情况。**
 
+<br>
+
 ![平台](https://img.shields.io/badge/平台-Windows-0078D4?style=flat-square&logo=windows&logoColor=white)
-![语言](https://img.shields.io/badge/开发语言-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
-![框架](https://img.shields.io/badge/开发框架-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
+![开发语言](https://img.shields.io/badge/开发语言-C%23-239120?style=flat-square&logo=csharp&logoColor=white)
+![开发框架](https://img.shields.io/badge/开发框架-.NET%20%2F%20WPF-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![数据库](https://img.shields.io/badge/数据库-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
 **简体中文** | [English](README.md)
 
----
+</div>
 
+---
 
 
 HotspotMeter 是一款面向 Windows 用户的桌面流量监控工具，帮助你直观了解手机热点连接状态、实时网络流量以及各应用程序的流量消耗。
