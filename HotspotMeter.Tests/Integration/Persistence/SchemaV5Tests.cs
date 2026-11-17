@@ -29,7 +29,7 @@ public sealed class SchemaV5Tests : IDisposable
             VALUES ('exe:c:\apps\demo.exe', NULL, 1, 100, 200, '2026-11-17T10:00:00.0000000+00:00');
             """);
 
-        Assert.Equal(5, new SchemaMigrator().Migrate(connection));
+        Assert.Equal(5, new SchemaMigrator(SchemaMigrator.DefaultMigrations.Take(5).ToList()).Migrate(connection));
 
         Assert.Equal(0L, Scalar(connection, "SELECT Enabled FROM GuardSettings WHERE Id = 1;"));
         Assert.Equal(45L, Scalar(connection, "SELECT SamplingIntervalSeconds FROM GuardSettings WHERE Id = 1;"));
@@ -45,8 +45,8 @@ public sealed class SchemaV5Tests : IDisposable
     public void Migrate_IsIdempotent()
     {
         using var connection = new SqliteConnectionFactory(_directory.File("hotspotmeter.db")).Create();
-        Assert.Equal(5, new SchemaMigrator().Migrate(connection));
-        Assert.Equal(5, new SchemaMigrator().Migrate(connection));
+        Assert.Equal(5, new SchemaMigrator(SchemaMigrator.DefaultMigrations.Take(5).ToList()).Migrate(connection));
+        Assert.Equal(5, new SchemaMigrator(SchemaMigrator.DefaultMigrations.Take(5).ToList()).Migrate(connection));
         Assert.Equal(1L, Scalar(connection, "SELECT COUNT(*) FROM GuardSettings;"));
     }
 

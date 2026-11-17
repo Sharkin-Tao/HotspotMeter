@@ -1155,3 +1155,29 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 文档：PROJECT_CONTEXT 当前状态/第二阶段结果/事实 32–35/变更记录；docs/03 第二阶段组件；docs/04 §14 v5；docs/07 第二阶段验收；docs/09 D-115～D-120；本日志。
 - 未做：守护设置/规则/提醒历史 UI、结束进程、防火墙、评分；勿扰/权限无法可靠检测；24 小时长稳与真实睡眠/网络切换未测。
 - 提交：`feat: add traffic guard alert rules and notifications`（本地独立 commit，未 push；最终哈希以 `git log -1` 为准）。
+
+## 2026-11-17 Traffic Guard 第三阶段：手动控制与异常记录管理
+
+**目标**：把已有提醒记录变成可查看、可筛选、可处理的异常历史，并提供受控的程序信任/忽略与手动结束进程；不扩大为自动阻断。
+
+**数据库**：新增 `SchemaV6`，仅 `ALTER TABLE ADD COLUMN`：`GuardAppRules.ExecutablePath`；`GuardAlertHistory.MetricKind/ThresholdSource/ActivityState/HandlingAction`；两个查询索引。`SchemaMigrator.SupportedVersion=6`，迁移单事务、幂等、故障注入可回滚，v5 规则/提醒与既有网卡历史全部保留。
+
+**Core**：`GuardManagementModels` 定义详情/查询/进程候选/结束请求与状态；`GuardProcessPolicy` 为纯安全判定（会话 0、Windows 目录、受保护名单、服务宿主、空路径、uncertain/opaque 阻止）；`GuardAlertService` 写入新增的 metric/阈值来源/活动状态。
+
+**Infrastructure**：`GuardStore` 实现 `IGuardManagementRepository`，详情 LEFT JOIN 规则、按程序/通知状态筛选、处理记录、规则读取；`GuardProcessManager` 按 AppKey 枚举并在结束前复核 PID + 启动时间 + 路径/PFN，映射 `AlreadyExited/AccessDenied/IdentityChanged/Blocked/Failed`。
+
+**App**：新增 `GuardWindow`（960×640，单实例，历史列表 + 详情 + 规则 + 进程 + 操作）与 `GuardConfirmWindow`（名称/PID/路径二次确认）；`GuardViewModel` 负责筛选、详情、信任/取消/忽略 1h/24h/7d、打开文件夹、结束进程；所有操作写库后重读。托盘新增“流量守护”，中英键补齐，窗口随语言刷新。
+
+**测试**：`dotnet test` **515/515**（原 485 + 30）。新增 v6 迁移与回滚、详情查询/筛选/排序、处理记录、规则路径往返、进程安全策略、PID 复用/启动时间不符、系统路径阻止、真实复制 `ping.exe` 结束成功。Debug/Release 构建 0 警告 0 错误。
+
+**运行时**：`HOTSPOTMETER_UI_GUARD` 抓取 960×640，空态 `layout=ok texts=37`，注入合成提醒后 `texts=42`；筛选项显示中文标签。合成数据验证后已恢复数据库，真实库无污染。
+
+**限制**：未逐按钮做真实点击回归；未做“信任→再次超阈值不再提醒”的长时人工验收；UWP/共享服务进程默认禁止结束；历史记录不提供删除。自动结束、防火墙、评分、完整守护设置页留给后续。
+
+### 数据事故记录（2026-11-17 19:59）
+
+阶段 3 收尾核查真实库时发现：`%LOCALAPPDATA%\HotspotMeter\Database\hotspotmeter.db` 曾被 `DatabaseHealth` 判为 malformed，并隔离到 `Database\corrupt\corrupt-20261117-115909-084\hotspotmeter.db`（2,322,432 B）。当前库是隔离后重建的 204,800 B 新库，`user_version=6`，只有 6 会话/5 快照/1 日汇总，原 52 会话/5439 快照历史不在其中。
+
+隔离文件用 `PRAGMA quick_check` 仍然报 `database disk image is malformed`，暂无法直接读取；根因未确认。最可能是 WAL 模式下备份/恢复只复制了主库文件、没有带 `-wal`，导致恢复后的库不一致。这是本项目自己的操作风险，不是 SQLite 正常升级导致。
+
+处理：保留隔离文件原样，不删除、不覆盖；当前库继续可用。后续如要恢复，应在隔离文件副本上尝试 `sqlite3 .recover` 等只读恢复手段，不直接修改原文件。阶段 3 的“v6 保留旧数据”只在测试库验证，不能表述为真实历史已保住。

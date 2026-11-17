@@ -107,7 +107,8 @@ public sealed record GuardAppRule(
     string AppKey,
     GuardRuleMode Mode,
     long? ThresholdOverrideBytes,
-    DateTimeOffset? IgnoreUntilUtc);
+    DateTimeOffset? IgnoreUntilUtc,
+    string? ExecutablePath = null);
 
 /// <summary>
 /// 某个程序在统计周期内的聚合。字节数来自 GuardTrafficSamples 的已确认增量之和；
@@ -144,7 +145,11 @@ public sealed record GuardAlertRecord(
     long DownloadBytes,
     long UploadBytes,
     DateTimeOffset CreatedAtUtc,
-    GuardNotificationStatus NotificationStatus);
+    GuardNotificationStatus NotificationStatus,
+    GuardMetric Metric = GuardMetric.Total,
+    bool ThresholdFromAppRule = false,
+    GuardActivityState ActivityState = GuardActivityState.Background,
+    string? NotificationError = null);
 
 /// <summary>规则判定的纯结果，不包含任何 I/O，便于覆盖边界测试。</summary>
 public enum GuardAlertDecisionKind

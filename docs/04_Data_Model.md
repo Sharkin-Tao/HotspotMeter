@@ -447,3 +447,40 @@ v5 不重建任何表，只在 v4 上 `ALTER TABLE ADD COLUMN` 并新增索引�
 - v4 的既有列、行、索引全部保留；新列有默认值，旧行升级后即为默认配置。
 - 迁移失败整体回滚，`user_version` 不前进；重复执行幂等。
 - 不改变 `TrafficSnapshots/DailyTraffic/ConnectionSessions` 等既有表。
+
+## 15. Schema v6：Traffic Guard 管理与异常记录（2026-11-17）
+
+v6 只做增量迁移，目标是在不破坏 v5 规则/提醒的前提下，补齐“处理动作、阈值口径、活动状态、程序路径”。
+
+### 15.1 GuardAppRules 新增列
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `ExecutablePath` | TEXT NULL | 长度 1–1024；仅 `exe:` 身份写入，用于详情展示与打开文件夹；`pkg:`/`opaque` 为 NULL |
+
+### 15.2 GuardAlertHistory 新增列
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `MetricKind` | INTEGER NOT NULL DEFAULT 2 | 0=下载，1=上传，2=合计；触发时口径 |
+| `ThresholdSource` | INTEGER NOT NULL DEFAULT 0 | 0=全局默认，1=单程序覆盖 |
+| `ActivityState` | INTEGER NOT NULL DEFAULT 0 | 0=Foreground，1=Background，2=Idle |
+| `HandlingAction` | INTEGER NOT NULL DEFAULT 0 | 0=None，1=Trusted，2=Untrusted，3=Ignored，4=OpenedFolder，5=Terminated |
+
+新增索引：
+
+- `IX_GuardAlerts_CreatedAt(CreatedAtUtc DESC, AlertId DESC)`：历史列表默认排序。
+- `IX_GuardAlerts_Notification(NotificationStatus, CreatedAtUtc DESC)`：按发送状态筛选。
+
+### 15.3 详情查询与处理记录
+
+- 详情查询 `LEFT JOIN GuardAppRules`，规则不存在时回退 `RuleMode=Inherit`、`IdentityKind=3`、`IdentityCertain=0`，不伪造路径或名称。
+- 筛选条件可组合 `AppKey`、`NotificationStatus`，`Limit` 夹在 1–500；默认按创建时间倒序、`AlertId` 倒序，保证同一秒内稳定排序。
+- `RecordHandlingAsync` 写 `HandlingAction` 与 `HandledAtUtc`；除 `OpenedFolder` 外把 `IsDismissed` 置 1。处理记录不删除原始异常行。
+- 规则保存用 `COALESCE($path, ExecutablePath)`：手动信任时不会因为本次请求没有路径而清掉之前学到的 exe 路径。
+
+### 15.4 迁移与兼容
+
+- `SchemaMigrator.SupportedVersion=6`；v6 迁移单事务，失败回滚后 `user_version` 仍为 5，且不会留下半成品列/索引。
+- v5 旧提醒行读取时：`IdentityKind` 缺省 Uncertain、`Period` 缺省 Today、`PeriodStartUtc=CreatedAtUtc`、上下行为 0、`Metric=Total`、`RuleMode=Inherit`。
+- 不修改 `ConnectionSessions/TrafficSnapshots/DailyTraffic/GuardTrafficSamples/GuardSettings` 既有列。

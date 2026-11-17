@@ -20,7 +20,7 @@ public sealed record GuardSettingsSnapshot(
 ///
 /// 写入通过 <see cref="SqliteWriter"/> 单消费者串行执行，不阻塞采样循环。
 /// </summary>
-public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsyncDisposable
+public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IGuardManagementRepository, IAsyncDisposable
 {
     private readonly SqliteConnectionFactory _factory;
     private readonly SqliteWriter _writer;
@@ -137,13 +137,14 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
         command.CommandText =
             """
             INSERT INTO GuardAppRules
-                (AppKey, DisplayName, IdentityKind, IdentityCertain, TrustState, FirstSeenAtUtc, LastSeenAtUtc)
+                (AppKey, DisplayName, IdentityKind, IdentityCertain, TrustState, FirstSeenAtUtc, LastSeenAtUtc, ExecutablePath)
             VALUES
-                ($key, $name, $kind, $certain, 0, $first, $last)
+                ($key, $name, $kind, $certain, 0, $first, $last, $path)
             ON CONFLICT (AppKey) DO UPDATE SET
                 DisplayName = excluded.DisplayName,
                 IdentityKind = excluded.IdentityKind,
                 IdentityCertain = excluded.IdentityCertain,
+                ExecutablePath = COALESCE(excluded.ExecutablePath, GuardAppRules.ExecutablePath),
                 LastSeenAtUtc = excluded.LastSeenAtUtc;
             """;
         command.Parameters.AddWithValue("$key", sample.AppKey);
@@ -152,6 +153,11 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
         command.Parameters.AddWithValue("$certain", sample.IdentityCertain ? 1 : 0);
         command.Parameters.AddWithValue("$first", UtcTimestamp.FromUtc(sample.ToUtc));
         command.Parameters.AddWithValue("$last", UtcTimestamp.FromUtc(sample.ToUtc));
+        command.Parameters.AddWithValue(
+            "$path",
+            sample.AppKey.StartsWith("exe:", StringComparison.OrdinalIgnoreCase)
+                ? sample.AppKey[4..]
+                : (object)DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -264,7 +270,7 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
             command.Transaction = transaction;
             command.CommandText =
                 """
-                SELECT AppKey, RuleMode, ThresholdOverrideBytes, IgnoreUntilUtc
+                SELECT AppKey, RuleMode, ThresholdOverrideBytes, IgnoreUntilUtc, ExecutablePath
                 FROM GuardAppRules
                 ORDER BY DisplayName COLLATE NOCASE, AppKey;
                 """;
@@ -275,7 +281,8 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
                     reader.GetString(0),
                     (GuardRuleMode)reader.GetInt64(1),
                     reader.IsDBNull(2) ? null : reader.GetInt64(2),
-                    reader.IsDBNull(3) ? null : UtcTimestamp.Parse(reader.GetString(3))));
+                    reader.IsDBNull(3) ? null : UtcTimestamp.Parse(reader.GetString(3)),
+                    reader.IsDBNull(4) ? null : reader.GetString(4)));
             }
 
             return rules;
@@ -304,7 +311,8 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
                 UPDATE GuardAppRules
                 SET RuleMode = $mode,
                     ThresholdOverrideBytes = $threshold,
-                    IgnoreUntilUtc = $ignore
+                    IgnoreUntilUtc = $ignore,
+                    ExecutablePath = COALESCE($path, ExecutablePath)
                 WHERE AppKey = $key;
                 """;
             update.Parameters.AddWithValue("$mode", (int)rule.Mode);
@@ -312,6 +320,9 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
             update.Parameters.AddWithValue(
                 "$ignore",
                 rule.IgnoreUntilUtc is null ? DBNull.Value : UtcTimestamp.FromUtc(rule.IgnoreUntilUtc.Value));
+            update.Parameters.AddWithValue(
+                "$path",
+                string.IsNullOrWhiteSpace(rule.ExecutablePath) ? DBNull.Value : rule.ExecutablePath);
             update.Parameters.AddWithValue("$key", rule.AppKey);
             var affected = await update.ExecuteNonQueryAsync(token);
             if (affected > 0)
@@ -329,15 +340,18 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
                 """
                 INSERT INTO GuardAppRules
                     (AppKey, DisplayName, IdentityKind, IdentityCertain, TrustState,
-                     FirstSeenAtUtc, LastSeenAtUtc, RuleMode, ThresholdOverrideBytes, IgnoreUntilUtc)
+                     FirstSeenAtUtc, LastSeenAtUtc, RuleMode, ThresholdOverrideBytes, IgnoreUntilUtc, ExecutablePath)
                 VALUES
-                    ($key, $name, 3, 0, 0, $now, $now, $mode, $threshold, $ignore);
+                    ($key, $name, 3, 0, 0, $now, $now, $mode, $threshold, $ignore, $path);
                 """;
             insert.Parameters.AddWithValue("$key", rule.AppKey);
             insert.Parameters.AddWithValue("$name", placeholderName);
             insert.Parameters.AddWithValue("$now", now);
             insert.Parameters.AddWithValue("$mode", (int)rule.Mode);
             insert.Parameters.AddWithValue("$threshold", (object?)rule.ThresholdOverrideBytes ?? DBNull.Value);
+            insert.Parameters.AddWithValue(
+                "$path",
+                string.IsNullOrWhiteSpace(rule.ExecutablePath) ? DBNull.Value : rule.ExecutablePath);
             insert.Parameters.AddWithValue(
                 "$ignore",
                 rule.IgnoreUntilUtc is null ? DBNull.Value : UtcTimestamp.FromUtc(rule.IgnoreUntilUtc.Value));
@@ -482,11 +496,13 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
                 INSERT INTO GuardAlertHistory
                     (AppKey, ProfileKey, AlertType, ThresholdBytes, ActualBytes, CreatedAtUtc,
                      IsDismissed, Details, PeriodKind, PeriodStartUtc, DownloadBytes, UploadBytes,
-                     NotificationStatus, NotificationError, HandledAtUtc)
+                     NotificationStatus, NotificationError, HandledAtUtc,
+                     MetricKind, ThresholdSource, ActivityState, HandlingAction)
                 VALUES
                     ($key, $profile, $type, $threshold, $actual, $created,
                      0, NULL, $period, $periodStart, $download, $upload,
-                     0, NULL, NULL);
+                     $notif, $error, NULL,
+                     $metric, $thresholdSource, $activity, 0);
                 SELECT last_insert_rowid();
                 """;
             command.Parameters.AddWithValue("$key", record.AppKey);
@@ -501,6 +517,15 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
             command.Parameters.AddWithValue("$periodStart", UtcTimestamp.FromUtc(record.PeriodStartUtc));
             command.Parameters.AddWithValue("$download", record.DownloadBytes);
             command.Parameters.AddWithValue("$upload", record.UploadBytes);
+            command.Parameters.AddWithValue("$notif", (int)record.NotificationStatus);
+            command.Parameters.AddWithValue(
+                "$error",
+                string.IsNullOrWhiteSpace(record.NotificationError)
+                    ? DBNull.Value
+                    : record.NotificationError);
+            command.Parameters.AddWithValue("$metric", (int)record.Metric);
+            command.Parameters.AddWithValue("$thresholdSource", record.ThresholdFromAppRule ? 1 : 0);
+            command.Parameters.AddWithValue("$activity", (int)record.ActivityState);
             return Convert.ToInt64(await command.ExecuteScalarAsync(token), System.Globalization.CultureInfo.InvariantCulture);
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -531,6 +556,215 @@ public sealed class GuardStore : IGuardSampleSink, IGuardAlertRepository, IAsync
             command.Parameters.AddWithValue("$id", alertId);
             await command.ExecuteNonQueryAsync(token);
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<GuardAlertDetail>> GetAlertDetailsAsync(
+        GuardHistoryQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        return await _writer.WriteAsync(async (connection, transaction, token) =>
+        {
+            var items = new List<GuardAlertDetail>();
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                SELECT a.AlertId,
+                       a.AppKey,
+                       COALESCE(r.DisplayName, a.AppKey),
+                       r.IdentityKind,
+                       r.IdentityCertain,
+                       r.ExecutablePath,
+                       a.ProfileKey,
+                       a.CreatedAtUtc,
+                       a.PeriodKind,
+                       a.PeriodStartUtc,
+                       a.AlertType,
+                       a.ThresholdBytes,
+                       a.ActualBytes,
+                       a.DownloadBytes,
+                       a.UploadBytes,
+                       a.MetricKind,
+                       a.ThresholdSource,
+                       a.ActivityState,
+                       a.NotificationStatus,
+                       a.NotificationError,
+                       a.IsDismissed,
+                       a.HandledAtUtc,
+                       a.HandlingAction,
+                       r.RuleMode,
+                       r.IgnoreUntilUtc
+                FROM GuardAlertHistory a
+                LEFT JOIN GuardAppRules r ON r.AppKey = a.AppKey
+                WHERE ($app IS NULL OR a.AppKey = $app)
+                  AND ($status IS NULL OR a.NotificationStatus = $status)
+                ORDER BY a.CreatedAtUtc DESC, a.AlertId DESC
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue(
+                "$app",
+                string.IsNullOrWhiteSpace(query.AppKey) ? (object)DBNull.Value : query.AppKey);
+            command.Parameters.AddWithValue(
+                "$status",
+                query.NotificationStatus is { } status ? (int)status : (object)DBNull.Value);
+            command.Parameters.AddWithValue("$limit", query.SafeLimit);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                items.Add(ReadDetail(reader));
+            }
+
+            return items;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<GuardAlertDetail?> GetAlertDetailAsync(
+        long alertId,
+        CancellationToken cancellationToken = default)
+    {
+        if (alertId <= 0)
+        {
+            return null;
+        }
+
+        return await _writer.WriteAsync(async (connection, transaction, token) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                SELECT a.AlertId,
+                       a.AppKey,
+                       COALESCE(r.DisplayName, a.AppKey),
+                       r.IdentityKind,
+                       r.IdentityCertain,
+                       r.ExecutablePath,
+                       a.ProfileKey,
+                       a.CreatedAtUtc,
+                       a.PeriodKind,
+                       a.PeriodStartUtc,
+                       a.AlertType,
+                       a.ThresholdBytes,
+                       a.ActualBytes,
+                       a.DownloadBytes,
+                       a.UploadBytes,
+                       a.MetricKind,
+                       a.ThresholdSource,
+                       a.ActivityState,
+                       a.NotificationStatus,
+                       a.NotificationError,
+                       a.IsDismissed,
+                       a.HandledAtUtc,
+                       a.HandlingAction,
+                       r.RuleMode,
+                       r.IgnoreUntilUtc
+                FROM GuardAlertHistory a
+                LEFT JOIN GuardAppRules r ON r.AppKey = a.AppKey
+                WHERE a.AlertId = $id;
+                """;
+            command.Parameters.AddWithValue("$id", alertId);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            return await reader.ReadAsync(token) ? ReadDetail(reader) : null;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RecordHandlingAsync(
+        long alertId,
+        GuardHandlingAction action,
+        DateTimeOffset handledAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (alertId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(alertId));
+        }
+
+        await _writer.WriteAsync(async (connection, transaction, token) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                UPDATE GuardAlertHistory
+                SET HandlingAction = $action,
+                    HandledAtUtc = $handled,
+                    IsDismissed = $dismissed
+                WHERE AlertId = $id;
+                """;
+            command.Parameters.AddWithValue("$action", (int)action);
+            command.Parameters.AddWithValue("$handled", UtcTimestamp.FromUtc(handledAtUtc));
+            command.Parameters.AddWithValue("$dismissed", action == GuardHandlingAction.OpenedFolder ? 0 : 1);
+            command.Parameters.AddWithValue("$id", alertId);
+            await command.ExecuteNonQueryAsync(token);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<GuardAppRule?> GetAppRuleAsync(
+        string appKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(appKey);
+        return await _writer.WriteAsync(async (connection, transaction, token) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                SELECT RuleMode, ThresholdOverrideBytes, IgnoreUntilUtc, ExecutablePath
+                FROM GuardAppRules
+                WHERE AppKey = $key;
+                """;
+            command.Parameters.AddWithValue("$key", appKey);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+            {
+                return null;
+            }
+
+            return new GuardAppRule(
+                appKey,
+                (GuardRuleMode)reader.GetInt64(0),
+                reader.IsDBNull(1) ? null : reader.GetInt64(1),
+                reader.IsDBNull(2) ? null : UtcTimestamp.Parse(reader.GetString(2)),
+                reader.IsDBNull(3) ? null : reader.GetString(3));
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static GuardAlertDetail ReadDetail(Microsoft.Data.Sqlite.SqliteDataReader reader)
+    {
+        var createdAt = UtcTimestamp.Parse(reader.GetString(7));
+        var identityKind = reader.IsDBNull(3) ? AppIdentityKind.Uncertain : (AppIdentityKind)reader.GetInt64(3);
+        var period = reader.IsDBNull(8) ? GuardPeriod.Today : (GuardPeriod)reader.GetInt64(8);
+        var periodStart = reader.IsDBNull(9) ? createdAt : UtcTimestamp.Parse(reader.GetString(9));
+        var ruleMode = reader.IsDBNull(23) ? GuardRuleMode.Inherit : (GuardRuleMode)reader.GetInt64(23);
+
+        return new GuardAlertDetail(
+            reader.GetInt64(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            identityKind,
+            !reader.IsDBNull(4) && reader.GetInt64(4) != 0,
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
+            createdAt,
+            period,
+            periodStart,
+            (GuardAlertKind)reader.GetInt64(10),
+            reader.GetInt64(11),
+            reader.GetInt64(12),
+            reader.IsDBNull(13) ? 0 : reader.GetInt64(13),
+            reader.IsDBNull(14) ? 0 : reader.GetInt64(14),
+            (GuardMetric)reader.GetInt64(15),
+            reader.GetInt64(16) != 0,
+            (GuardActivityState)reader.GetInt64(17),
+            (GuardNotificationStatus)reader.GetInt64(18),
+            reader.IsDBNull(19) ? null : reader.GetString(19),
+            reader.GetInt64(20) != 0,
+            reader.IsDBNull(21) ? null : UtcTimestamp.Parse(reader.GetString(21)),
+            (GuardHandlingAction)reader.GetInt64(22),
+            ruleMode,
+            reader.IsDBNull(24) ? null : UtcTimestamp.Parse(reader.GetString(24)));
     }
 
     public async ValueTask DisposeAsync()

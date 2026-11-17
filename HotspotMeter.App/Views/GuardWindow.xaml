@@ -1,0 +1,374 @@
+<Window x:Class="HotspotMeter.App.Views.GuardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:HotspotMeter.App.ViewModels"
+        xmlns:loc="clr-namespace:HotspotMeter.App.Localization"
+        xmlns:conv="clr-namespace:HotspotMeter.App.Converters"
+        mc:Ignorable="d"
+        Title="{loc:Tr Guard_WindowTitle}"
+        Width="960" Height="640"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgApp}"
+        Foreground="{StaticResource TextPrimary}"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        d:DataContext="{d:DesignInstance Type=vm:GuardViewModel}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+
+        <Style x:Key="GuardListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="8" Padding="10,8">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource BgHover}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource BgPillSelected}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource BorderSelected}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GuardListStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource GuardListItemStyle}" />
+        </Style>
+
+        <Style x:Key="GuardComboItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource BgHover}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource BgPillSelected}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DarkComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource GuardComboItemStyle}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="1" CornerRadius="8">
+                                <Grid>
+                                    <ContentPresenter Margin="11,0,30,0" VerticalAlignment="Center"
+                                                      Content="{TemplateBinding SelectionBoxItem}"
+                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                                    <Path Data="M 0 0 L 4 4 L 8 0" Stroke="{StaticResource TextSecondary}"
+                                          StrokeThickness="1.4" HorizontalAlignment="Right"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" />
+                                    <ToggleButton Focusable="False" ClickMode="Press"
+                                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" />
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                </Grid>
+                            </Border>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                <Border Background="{StaticResource BgCard}" BorderBrush="{StaticResource BorderStrong}"
+                                        BorderThickness="1" CornerRadius="8" Margin="0,4,0,0"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                        MaxHeight="280">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel IsItemsHost="True" Margin="4" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="InfoLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextTertiary}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+        </Style>
+
+        <Style x:Key="InfoValueStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingButtonStyle}">
+            <Setter Property="Foreground" Value="{StaticResource DangerText}" />
+            <Setter Property="BorderBrush" Value="#5A2626" />
+            <Setter Property="Background" Value="#2A1515" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24,18,24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部标题与刷新 -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel>
+                <TextBlock Text="{loc:Tr Guard_Title}" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Text="{loc:Tr Guard_Subtitle}" FontSize="12"
+                           Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Content="{loc:Tr Guard_Refresh}" Command="{Binding RefreshCommand}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Style="{StaticResource SettingButtonStyle}" />
+        </Grid>
+
+        <!-- 筛选 -->
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Tr Guard_FilterProgram}" Foreground="{StaticResource TextTertiary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Width="220" Style="{StaticResource DarkComboBoxStyle}"
+                          ItemsSource="{Binding ProgramOptions}" DisplayMemberPath="Label"
+                          SelectedItem="{Binding SelectedProgram, Mode=TwoWay}" />
+                <TextBlock Text="{loc:Tr Guard_FilterStatus}" Foreground="{StaticResource TextTertiary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="18,0,8,0" />
+                <ComboBox Width="150" Style="{StaticResource DarkComboBoxStyle}"
+                          ItemsSource="{Binding StatusOptions}" DisplayMemberPath="Label"
+                          SelectedItem="{Binding SelectedStatus, Mode=TwoWay}" />
+            </StackPanel>
+            <TextBlock Text="{Binding StatusText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       Foreground="{StaticResource TextSecondary}" FontSize="12" TextTrimming="CharacterEllipsis" />
+        </Grid>
+
+        <!-- 主区 -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="372" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 历史列表 -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{loc:Tr Guard_History}" Style="{StaticResource SectionTitleStyle}"
+                               Margin="2,0,0,10" />
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Alerts}" SelectedItem="{Binding SelectedAlert, Mode=TwoWay}"
+                             Style="{StaticResource GuardListStyle}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:GuardAlertListItem}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock Text="{Binding TimeText}" FontSize="11"
+                                                       Foreground="{StaticResource TextTertiary}" />
+                                            <TextBlock Text="  ·  " FontSize="11" Foreground="{StaticResource TextTertiary}" />
+                                            <TextBlock Text="{Binding BytesText}" FontSize="11"
+                                                       Foreground="{StaticResource TextSecondary}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11"
+                                               Foreground="{Binding StatusBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- 详情 -->
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="18,16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="{Binding DetailName}" FontSize="19" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding DetailIdentity}" FontSize="11.5"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding DetailPath}" FontSize="11"
+                                       Foreground="{StaticResource TextTertiary}" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" />
+
+                            <Border Height="1" Background="{StaticResource BorderSubtle}" Margin="0,14,0,14" />
+
+                            <UniformGrid Columns="3">
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelPeriod}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailPeriod}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelTime}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailTime}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelActivity}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailActivity}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelActual}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailActual}" Style="{StaticResource InfoValueStyle}"
+                                               Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelDownload}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailDownload}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelUpload}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailUpload}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelThreshold}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailThreshold}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelNotification}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailNotification}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Guard_LabelHandling}" Style="{StaticResource InfoLabelStyle}" />
+                                    <TextBlock Text="{Binding DetailHandling}" Style="{StaticResource InfoValueStyle}" />
+                                </StackPanel>
+                            </UniformGrid>
+
+                            <TextBlock Text="{loc:Tr Guard_LabelRule}" Style="{StaticResource InfoLabelStyle}" />
+                            <TextBlock Text="{Binding DetailRule}" Style="{StaticResource InfoValueStyle}" />
+
+                            <TextBlock Text="{loc:Tr Guard_Processes}" Style="{StaticResource SectionTitleStyle}"
+                                       Margin="0,4,0,8" />
+                            <ListBox ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                                     Style="{StaticResource GuardListStyle}" MaxHeight="124">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:GuardProcessItem}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="64" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding PidText}" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondary}" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding PathText}" FontSize="11.5"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding StartText}" FontSize="10.5"
+                                                           Foreground="{StaticResource TextTertiary}" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding SafetyText}" FontSize="10.5"
+                                                       Foreground="{StaticResource TextTertiary}"
+                                                       VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding EmptyProcessText}" FontSize="11.5"
+                                       Foreground="{StaticResource TextTertiary}" Margin="2,6,0,0"
+                                       Visibility="{Binding HasProcesses, Converter={StaticResource InverseBoolToVisibility}}" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                        <TextBlock Text="{loc:Tr Guard_RuleActions}" Style="{StaticResource InfoLabelStyle}" />
+                        <WrapPanel Margin="0,0,0,10">
+                            <Button Content="{loc:Tr Guard_Trust}" Command="{Binding TrustCommand}"
+                                    Style="{StaticResource SettingButtonStyle}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Tr Guard_Inherit}" Command="{Binding UntrustCommand}"
+                                    Style="{StaticResource SettingButtonStyle}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Tr Guard_Ignore1h}" Command="{Binding IgnoreHourCommand}"
+                                    Style="{StaticResource SettingButtonStyle}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Tr Guard_Ignore24h}" Command="{Binding IgnoreDayCommand}"
+                                    Style="{StaticResource SettingButtonStyle}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Tr Guard_Ignore7d}" Command="{Binding IgnoreWeekCommand}"
+                                    Style="{StaticResource SettingButtonStyle}" Margin="0,0,8,8" />
+                        </WrapPanel>
+                        <TextBlock Text="{loc:Tr Guard_ProcessActions}" Style="{StaticResource InfoLabelStyle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="{loc:Tr Guard_OpenFolder}" Command="{Binding OpenFolderCommand}"
+                                    Style="{StaticResource SettingButtonStyle}" Margin="0,0,8,0" />
+                            <Button Content="{loc:Tr Guard_EndProcess}" Click="Terminate_Click"
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    IsEnabled="{Binding SelectedProcess.CanTerminate, FallbackValue=False}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="3" Margin="2,12,0,0" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                   Text="{loc:Tr Guard_Footer}" TextTrimming="CharacterEllipsis" />
+    </Grid>
+</Window>
+

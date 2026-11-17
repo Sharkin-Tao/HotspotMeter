@@ -242,3 +242,22 @@ Guard 与现有网卡流量监控**并行但独立**：网卡引擎负责会话/
 **通知边界**：未打包进程读取 `ToastNotifier.Setting` 会抛 `0x80070490`，因此不据此判断权限；`Show` 抛异常记 `Failed`，成功记 `Sent`。勿扰模式/通知权限被关闭时系统可能静默抑制，程序无法可靠区分，文档与界面文案不得声称“必定弹出”。
 
 **周期**：`Session` 使用活动会话起点；`Today` 使用本地自然日零点转 UTC；`Rolling24Hours` 使用评估时刻 −24 h。时区在周期中途变化时，下一轮重新取边界，不追溯修改已写样本。
+
+## Traffic Guard 第三阶段组件（2026-11-17）
+
+第三阶段把“提醒记录”变成可查看、可处理的数据，并在用户主动确认后提供受控的进程结束能力。采集、规则与提醒链路不变。
+
+| 层 | 组件 | 职责 |
+| --- | --- | --- |
+| Core | `TrafficGuard/GuardManagementModels` | 处理动作、进程操作状态、阻止原因、异常详情、查询、结束请求/结果、管理仓储与进程服务接口 |
+| Core | `GuardProcessPolicy` | 纯安全判定：会话 0、`%WINDIR%`、受保护名单、服务宿主、空路径、uncertain/opaque 一律阻止；可结束性只由该函数决定 |
+| Infrastructure | `GuardStore`（扩展） | `IGuardManagementRepository`：详情 LEFT JOIN 规则、按程序/通知状态筛选、处理记录写入、规则读取；规则更新用 `COALESCE` 保留已有 exe 路径 |
+| Infrastructure | `TrafficGuard/GuardProcessManager` | 按 AppKey 枚举 PID；结束前重新核对 PID + 启动时间（±2 s）+ 路径/PFN；调用 `Process.Kill` 并把异常映射为状态 |
+| App | `GuardViewModel` | 历史/详情/进程三段状态；命令防重入；操作写库后 `LoadAsync` 重读；错误只进 `StatusText`，不抛到 UI |
+| App | `Views/GuardWindow`、`GuardConfirmWindow` | 960×640 单实例深色窗口；二次确认展示名称/PID/路径；取消不终止；深色标题栏与中英切换 |
+
+**为什么 UI 不维护本地规则副本**：信任/忽略既可能由本窗口修改，也可能被后续设置页或数据库修复改动。所有操作完成后统一从 `GuardAppRules` 重读，避免“界面显示信任、数据库仍是继承”。`RecordHandlingAsync` 与规则写入分开，处理记录失败不会回滚规则，但会显示错误，用户可重试。
+
+**进程结束的安全边界**：`TerminateAsync` 不接受“上次枚举的结果”作为唯一依据，结束前必须重新枚举并匹配启动时间，专门防止 PID 复用；UWP、服务宿主、共享进程、系统目录、会话 0 和不确定身份默认拒绝。该限制不是缺陷，而是产品安全策略；用户无法在 UI 中绕过。
+
+**为什么 v6 只加列**：v5 已有真实规则/提醒数据，重建会丢处理历史；新增列均有默认值，旧记录读取时回退 `Uncertain/Today/Total/Inherit`，从而兼容升级前数据。

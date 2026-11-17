@@ -13,6 +13,7 @@
     <SolidColorBrush x:Key="BgHover" Color="#232327" />
     <SolidColorBrush x:Key="BorderSubtle" Color="#26262A" />
     <SolidColorBrush x:Key="BorderSelected" Color="#3A3A3F" />
+    <SolidColorBrush x:Key="BorderStrong" Color="#3A3A3F" />
     <SolidColorBrush x:Key="TextPrimary" Color="#F5F5F7" />
     <SolidColorBrush x:Key="TextSecondary" Color="#A1A1A6" />
     <SolidColorBrush x:Key="TextTertiary" Color="#6E6E73" />

@@ -25,6 +25,7 @@ public partial class App : Application, ISettingsHost
     private CapsuleWindow _capsule = null!;
     private SettingsWindow? _settingsWindow;
     private StatsWindow? _statsWindow;
+    private GuardWindow? _guardWindow;
     private readonly TrafficStatsService _statsService = new();
     private readonly AttributedUsageReader _usageReader = new();
     private TrayIconService? _tray;
@@ -97,6 +98,7 @@ public partial class App : Application, ISettingsHost
 
         _tray = new TrayIconService(
             openStats: OpenStats,
+            openGuard: OpenGuard,
             openSettings: OpenSettings,
             showCapsule: () => _capsule.ShowCapsule(),
             hideCapsule: () => _capsule.HideCapsule(),
@@ -150,6 +152,11 @@ public partial class App : Application, ISettingsHost
             _ = RunSettingsDumpAsync(settingsDumpPath);
         }
 
+        var guardDumpPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_GUARD");
+        if (!string.IsNullOrWhiteSpace(guardDumpPath))
+        {
+            _ = RunGuardDumpAsync(guardDumpPath);
+        }
         // 阶段 5 运行时验收：会真实写 HKCU Run 并恢复原状态，只在显式请求时执行。
         var stage5Path = Environment.GetEnvironmentVariable("HOTSPOTMETER_STAGE5_TEST");
         if (!string.IsNullOrWhiteSpace(stage5Path))
@@ -183,6 +190,41 @@ public partial class App : Application, ISettingsHost
         _statsWindow.Closed += (_, _) => _statsWindow = null;
         _statsWindow.Show();
         _statsWindow.Activate();
+    }
+
+    private void OpenGuard()
+    {
+        if (_guardWindow is { } existing)
+        {
+            if (!existing.IsVisible)
+            {
+                existing.Show();
+            }
+
+            existing.Activate();
+            return;
+        }
+
+        if (_guardStore is null)
+        {
+            MessageBox.Show(
+                LocalizationService.T("Guard_Disabled"),
+                LocalizationService.T("Guard_WindowTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var viewModel = new GuardViewModel(
+            _guardStore,
+            new GuardProcessManager(new ProcessInspector()));
+        _guardWindow = new GuardWindow(viewModel)
+        {
+            ShowInTaskbar = ShowStatsInTaskbar,
+        };
+        _guardWindow.Closed += (_, _) => _guardWindow = null;
+        _guardWindow.Show();
+        _guardWindow.Activate();
     }
 
     private void OpenSettings()

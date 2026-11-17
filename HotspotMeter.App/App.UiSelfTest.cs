@@ -446,6 +446,42 @@ public partial class App
     }
 
     /// <summary>
+    /// 开发期抓取流量守护窗口，验证列表、详情、操作区与中英文布局。
+    /// 数据全部来自真实数据库，仅写入诊断文本，不改变提醒或规则。
+    /// </summary>
+    internal async Task RunGuardDumpAsync(string outputPath)
+    {
+        await Task.Delay(1200);
+        OpenGuard();
+        await Task.Delay(2800);
+
+        var builder = new StringBuilder();
+        if (_guardWindow is null)
+        {
+            builder.AppendLine("guard.window=null");
+        }
+        else
+        {
+            builder.AppendLine(UiDump.Describe(_guardWindow));
+            builder.AppendLine(UiDump.CheckLayout(_guardWindow));
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
+        File.WriteAllText(outputPath, builder.ToString());
+
+        var pngPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_GUARD_PNG");
+        if (!string.IsNullOrWhiteSpace(pngPath) && _guardWindow is not null)
+        {
+            UiDump.SavePng(_guardWindow, pngPath);
+        }
+
+        if (Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_DUMP_EXIT") == "1")
+        {
+            Shutdown();
+        }
+    }
+
+    /// <summary>
     /// 打开真实统计窗口，等待一次异步加载后把文本边界写盘；用于验证独立窗口、
     /// 程序排行与 7 天柱状图确实由真实数据库驱动，而不是静态占位。
     /// </summary>

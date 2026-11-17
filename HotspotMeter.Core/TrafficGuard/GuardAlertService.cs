@@ -75,7 +75,7 @@ public sealed class GuardAlertService : IGuardAlertEngine
                 continue;
             }
 
-            await RaiseAsync(aggregate, settings, decision, target.ProfileKey, periodStart.Value, now, cancellationToken)
+            await RaiseAsync(aggregate, settings, rule, decision, target.ProfileKey, periodStart.Value, now, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -83,6 +83,7 @@ public sealed class GuardAlertService : IGuardAlertEngine
     private async Task RaiseAsync(
         GuardAppAggregate aggregate,
         GuardAlertSettings settings,
+        GuardAppRule? rule,
         GuardAlertDecision decision,
         string profileKey,
         DateTimeOffset periodStart,
@@ -104,7 +105,10 @@ public sealed class GuardAlertService : IGuardAlertEngine
             aggregate.DownloadBytes,
             aggregate.UploadBytes,
             now,
-            GuardNotificationStatus.Pending);
+            GuardNotificationStatus.Pending,
+            settings.Metric,
+            rule?.ThresholdOverrideBytes is not null,
+            aggregate.LastState);
 
         long alertId;
         try

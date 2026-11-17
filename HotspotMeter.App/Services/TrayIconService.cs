@@ -18,6 +18,7 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.ToolStripMenuItem _hideItem;
     private readonly Forms.ToolStripMenuItem _settingsItem;
     private readonly Forms.ToolStripMenuItem _statsItem;
+    private readonly Forms.ToolStripMenuItem _guardItem;
     private readonly Forms.ToolStripMenuItem _exitItem;
     private readonly Func<bool> _isCapsuleVisible;
     private readonly TrayMessageWindow _messageWindow;
@@ -25,6 +26,7 @@ public sealed class TrayIconService : IDisposable
 
     public TrayIconService(
         Action openStats,
+        Action openGuard,
         Action openSettings,
         Action showCapsule,
         Action hideCapsule,
@@ -45,12 +47,14 @@ public sealed class TrayIconService : IDisposable
         };
 
         _statsItem = CreateItem(LocalizationService.T("Tray_Stats"), openStats);
+        _guardItem = CreateItem(LocalizationService.T("Tray_Guard"), openGuard);
         _settingsItem = CreateItem(LocalizationService.T("Tray_Settings"), openSettings);
         _showItem = CreateItem(LocalizationService.T("Tray_Show"), showCapsule);
         _hideItem = CreateItem(LocalizationService.T("Tray_Hide"), hideCapsule);
         _exitItem = CreateItem(LocalizationService.T("Tray_Exit"), exit);
 
         _menu.Items.Add(_statsItem);
+        _menu.Items.Add(_guardItem);
         _menu.Items.Add(_settingsItem);
         _menu.Items.Add(new Forms.ToolStripSeparator());
         _menu.Items.Add(_showItem);
@@ -112,6 +116,7 @@ public sealed class TrayIconService : IDisposable
     private void ApplyLanguage()
     {
         _statsItem.Text = LocalizationService.T("Tray_Stats");
+        _guardItem.Text = LocalizationService.T("Tray_Guard");
         _settingsItem.Text = LocalizationService.T("Tray_Settings");
         _showItem.Text = LocalizationService.T("Tray_Show");
         _hideItem.Text = LocalizationService.T("Tray_Hide");
