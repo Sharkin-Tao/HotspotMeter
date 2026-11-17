@@ -44,11 +44,12 @@ public sealed record DatabaseMigration(
 public sealed class SchemaMigrator
 {
     /// <summary>当前程序支持的最高模式版本。</summary>
-    public const int SupportedVersion = 4;
+    public const int SupportedVersion = 5;
 
     /// <summary>
     /// 默认迁移集合。v1 只有元数据表；v2 是阶段 3B 审核通过的业务表结构；
-    /// v3 是快照操作表（幂等与操作级摘要）；v4 是 Traffic Guard 的配置/规则/样本/预留提醒表。
+    /// v3 是快照操作表（幂等与操作级摘要）；v4 是 Traffic Guard 的配置/规则/样本/预留提醒表；
+    /// v5 只追加 Guard 的规则/提醒列与索引，保留 v4 数据。
     /// 已发布的版本不得修改，后续变更只能追加新版本。
     /// </summary>
     public static readonly IReadOnlyList<DatabaseMigration> DefaultMigrations = new[]
@@ -78,6 +79,10 @@ public sealed class SchemaMigrator
             Version: 4,
             Name: "traffic-guard-v4",
             Statements: SchemaV4.Statements),
+        new DatabaseMigration(
+            Version: 5,
+            Name: "traffic-guard-alerts-v5",
+            Statements: SchemaV5.Statements),
     };
 
     private readonly IReadOnlyList<DatabaseMigration> _migrations;

@@ -163,3 +163,39 @@
 - 决策：`SchemaV4` 仅 `CREATE TABLE/INDEX IF NOT EXISTS` + `INSERT OR IGNORE` 种子；`SchemaMigrator.SupportedVersion=4`；迁移在单事务内，失败回滚、`user_version` 不变；不修改 v1–v3 表。
 - 验证：v3→v4 保留原有数据；重复迁移幂等；故障注入回滚后旧库完整；实际用户库升级后 52 会话/5439 快照/4 天日汇总仍在。
 - 边界：`GuardAlertHistory` 仅预留，不写业务；Guard 目前无设置 UI，读取默认值。
+
+## D-115 规则判定做成 Core 纯函数，按固定优先级短路
+- 状态：已实现（2026-11-17）
+- 决策：`GuardRuleEngine.Evaluate` 无 I/O、无时钟依赖，按“总开关 → Trusted/Disabled → Ignored（到期恢复 Inherit）→ 仅后台 → 阈值（单程序覆盖全局）→ 同周期去重 → 冷却 → 二次增长”顺序返回 `Threshold/Secondary/None` 与原因码。
+- 理由：规则组合多、边界多，纯函数可用模拟数据穷举，避免把数据库/通知副作用混进判断；原因码让 UI/日志能解释“为什么没提醒”。
+- 边界：`Ignored` 到期自动恢复继承，不永久关闭；`Disabled` 必须用户显式设置，不由程序推断。
+
+## D-116 提醒先写 Pending，再发通知，最后更新结果
+- 状态：已实现并实测（2026-11-17）
+- 决策：`GuardAlertService` 先 `InsertAlertAsync(Pending)`，成功后才 `Show`，再更新为 `Sent/Failed/Suppressed`；插入失败直接返回，不发送。
+- 理由：通知失败、进程崩溃或用户关通知都不能丢异常记录；“先发后记”会产生无法追溯的弹窗。
+- 边界：`Suppressed` 预留给后续可确认的勿扰/权限状态；当前 `Show` 异常记 `Failed`，无法区分系统静默抑制。
+
+## D-117 三种统计周期都从样本表 SUM，不维护内存累计
+- 状态：已实现（2026-11-17）
+- 决策：`Session` 取活动会话 `StartedAtUtc`；`Today` 取本地自然日零点转 UTC；`Rolling24Hours` 取评估时刻 −24 h。统一按 `ProfileKey` + `ToUtc >= periodStart` 从 `GuardTrafficSamples` 聚合。
+- 理由：进程重启、网络切换、周期重置后无需恢复额外内存状态；与阶段 1 的“只存正增量”口径一致。
+- 边界：`Today` 依赖本地时区；系统时区在周期中途变化时下一轮重新取边界，不追溯改历史样本。
+
+## D-118 v5 用 ALTER TABLE 增量加列，不重建提醒表
+- 状态：已实现并实测（2026-11-17）
+- 决策：`SchemaV5` 只对 `GuardSettings/GuardAppRules/GuardAlertHistory` `ADD COLUMN` 并建索引；`SupportedVersion=5`，迁移单事务、失败回滚；`GuardAlertHistory` 旧列保留。
+- 理由：v4 可能已有提醒预留行/用户规则，重建会丢数据；SQLite 加列成本低，符合“旧库可升级”。
+- 验证：v4→v5 保留原 Guard 设置/规则/提醒；重复迁移幂等；实机用户库升级后旧历史完整。
+
+## D-119 未打包进程用快捷方式 AUMID + 显式 AppUserModelID 发 Toast
+- 状态：已实现并实测可弹出（2026-11-17）
+- 决策：启动时 `SetCurrentProcessExplicitAppUserModelID("HotspotMeter.TrafficGuard")`；确保开始菜单存在指向当前 exe 的 `.lnk` 并写入 `PKEY_AppUserModel_ID`；`SHChangeNotify` 后 `CreateToastNotifier` + `Show`。x64 `PROPVARIANT` 显式 `Size=24`。
+- 理由：未打包 WPF 进程没有包身份，直接 `CreateToastNotifier` 会失败；这是 Windows 支持的桌面桥接注册方式，不需要 MSIX。
+- 边界：不读 `ToastNotifier.Setting`（未打包进程抛 `0x80070490`）；勿扰/权限关闭无法可靠检测，只能记录发送异常或标记“已发送但可能被系统抑制”；快捷方式残留由卸载/手动清理，不写系统目录。
+
+## D-120 通知文本与规则原因分离，文案只陈述事实
+- 状态：已实现（2026-11-17）
+- 决策：`GuardAlertText.Create` 只接收程序名、上下行、阈值、状态、周期与翻译函数，生成“检测到 X 正在后台使用较多流量”这类客观描述；不推断“自动更新/异常/恶意”。
+- 理由：逐应用归属存在延迟与未归属差额，不能把统计现象当成行为定性；中英文案共用占位符，避免两套逻辑漂移。
+- 边界：程序名来自 AppKey 派生显示名，未知身份显示不透明标识，不编造产品名。

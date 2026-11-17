@@ -395,3 +395,55 @@ CREATE TABLE GuardTrafficSamples (
 ### 13.5 事务与失败处理
 
 `GuardStore.WriteAsync` 在单个事务内 upsert `GuardAppRules` + 插入样本；任一行失败整批回滚，调用方（`TrafficGuardService`）恢复内存基线，下一轮从旧基线重算，避免“库写失败但基线前移”造成静默丢字节。数据库连接仍复用 `SqliteConnectionFactory`（WAL、`foreign_keys=ON`、`synchronous=FULL`）与 `SqliteWriter` 单消费者。
+
+## 14. Traffic Guard 提醒数据（v5，2026-11-17）
+
+v5 不重建任何表，只在 v4 上 `ALTER TABLE ADD COLUMN` 并新增索引；迁移名 `traffic-guard-alerts-v5`，`SchemaMigrator.SupportedVersion=5`。
+
+### 14.1 GuardSettings 新增列
+
+| 列 | 类型/默认 | 约束/含义 |
+| --- | --- | --- |
+| `AlertsEnabled` | INTEGER NOT NULL DEFAULT 1 | 0/1，全局提醒开关 |
+| `DefaultThresholdBytes` | INTEGER NOT NULL DEFAULT 104857600 | >0，默认 100 MB |
+| `PeriodKind` | INTEGER NOT NULL DEFAULT 1 | 0=当前会话，1=自然日，2=滚动 24h |
+| `MetricKind` | INTEGER NOT NULL DEFAULT 2 | 0=下载，1=上传，2=合计 |
+| `BackgroundOnly` | INTEGER NOT NULL DEFAULT 1 | 0/1，只提醒后台程序 |
+| `CooldownSeconds` | INTEGER NOT NULL DEFAULT 3600 | 0–86400 |
+| `SecondaryEnabled` | INTEGER NOT NULL DEFAULT 1 | 0/1，二次提醒开关 |
+| `SecondaryGrowthBytes` | INTEGER NOT NULL DEFAULT 52428800 | >0，二次提醒增长阈值 |
+
+### 14.2 GuardAppRules 新增列
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `RuleMode` | INTEGER NOT NULL DEFAULT 0 | 0=Inherit，1=Trusted，2=Disabled，3=Ignored；0–3 CHECK |
+| `ThresholdOverrideBytes` | INTEGER NULL | NULL 或 >0；单程序阈值覆盖 |
+| `IgnoreUntilUtc` | TEXT NULL | NULL 或 33 字符 UTC；Ignored 到期后恢复继承 |
+
+### 14.3 GuardAlertHistory 新增列
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `PeriodKind` | INTEGER | 0/1/2，冗余保存触发时周期 |
+| `PeriodStartUtc` | TEXT | 33 字符 UTC，周期起点 |
+| `DownloadBytes` | INTEGER | 触发时下行为累计 |
+| `UploadBytes` | INTEGER | 触发时上行为累计 |
+| `NotificationStatus` | INTEGER | 0=Pending，1=Sent，2=Suppressed，3=Failed |
+| `NotificationError` | TEXT NULL | ≤512 字符，发送异常摘要 |
+| `HandledAtUtc` | TEXT NULL | 用户处理时间，预留给后续 UI |
+
+新增索引 `IX_GuardAlerts_App_Period(AppKey, PeriodKind, CreatedAtUtc)`，用于按程序/周期查最近提醒。
+
+### 14.4 写入与查询
+
+- 提醒插入与流量样本写入共用 `GuardStore` 的单消费者 `SqliteWriter`；`InsertAlertAsync` 返回自增 `AlertId`。
+- 聚合查询：`ProfileKey` 小写匹配 + `ToUtc >= periodStart` 对 `DownloadBytes/UploadBytes` 求和，`ActivityState` 取该程序最新样本。
+- 设置与规则保存为整行更新；规则不存在时插入占位 `IdentityKind=3/IdentityCertain=0`，避免外键失败。
+- 所有时间列使用现有 33 字符 UTC 格式；`Today` 的边界在服务层换算，数据库不存本地日期。
+
+### 14.5 迁移与兼容
+
+- v4 的既有列、行、索引全部保留；新列有默认值，旧行升级后即为默认配置。
+- 迁移失败整体回滚，`user_version` 不前进；重复执行幂等。
+- 不改变 `TrafficSnapshots/DailyTraffic/ConnectionSessions` 等既有表。

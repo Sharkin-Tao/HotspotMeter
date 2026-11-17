@@ -1141,3 +1141,17 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 现有 Stage5 自检 Release 退出码 0：startup/taskbar/topmost/stats/monitor 全通过，`ui-layout=ok texts=5`；app.log 有 Guard 启动记录，无回归。
 - 文档：PROJECT_CONTEXT、docs/03、docs/04 §13、docs/07、docs/09 D-109～D-114、本日志。
 - 未做：提醒/评分/阈值/信任 UI/结束进程/守护页；24 小时 soak、真实睡眠/网络切换人工验收；逐应用样本尚未在统计窗口展示。
+
+## 2026-11-17 Traffic Guard 第二阶段：规则引擎 + Windows 提醒
+
+- 基线：`main@a7c0c15`，工作区干净；阶段 1 的 454 测试与 v4 迁移通过。本阶段直接实施，无匹配 C# Skill，沿用现有分层。
+- 先验证 Windows Toast：未打包进程直接 `CreateToastNotifier` 失败；修复 x64 `PROPVARIANT` 为 24 字节、写开始菜单快捷方式 AUMID、调用 `SetCurrentProcessExplicitAppUserModelID`、`SHChangeNotify` 后可实际弹出。未打包进程读 `ToastNotifier.Setting` 会抛 `0x80070490`，改为只捕获 `Show` 异常。
+- 新增 v5：`GuardSettings` 八个提醒列、`GuardAppRules` 三个规则列、`GuardAlertHistory` 七个结果列与 `IX_GuardAlerts_App_Period`；只 `ALTER TABLE`，不重建。
+- 新增 Core：`GuardAlertModels`、`GuardRuleEngine`、`GuardAlertText`、`GuardAlertService`；规则优先级固定并返回原因码；提醒先写 Pending 再发送，失败仍保留记录。
+- 扩展 Infrastructure `GuardStore`：提醒设置/规则、按 ProfileKey 聚合、活动会话起点、最新提醒、插入/通知状态更新；继续单 `SqliteWriter`。
+- App：`ToastNotificationSender`（AUMID/快捷方式/XML/Activated→统计）、`App.xaml.cs` 注入提醒服务、`LanguageCatalog` 中英文案；`TrafficGuardService` 写样本成功后调用提醒引擎，异常隔离。
+- 修复测试构造参数顺序；新增规则/提醒/v5/仓储测试；`SchemaV4Tests` 版本断言改 `SupportedVersion`；测试 454 → **485**，Debug/Release 构建 0/0。
+- 实机：备份库→v5→临时 1 MB 阈值/关闭仅后台/60 秒冷却→真实热点 75 秒产生 2 条 Sent 提醒→再等 45 秒无重复→恢复备份并重新迁移，提醒表归零、用户历史保留。
+- 文档：PROJECT_CONTEXT 当前状态/第二阶段结果/事实 32–35/变更记录；docs/03 第二阶段组件；docs/04 §14 v5；docs/07 第二阶段验收；docs/09 D-115～D-120；本日志。
+- 未做：守护设置/规则/提醒历史 UI、结束进程、防火墙、评分；勿扰/权限无法可靠检测；24 小时长稳与真实睡眠/网络切换未测。
+- 提交：`feat: add traffic guard alert rules and notifications`（本地独立 commit，未 push；最终哈希以 `git log -1` 为准）。

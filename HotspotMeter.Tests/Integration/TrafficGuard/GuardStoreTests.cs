@@ -107,6 +107,121 @@ public sealed class GuardStoreTests : IAsyncLifetime
         Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM GuardAppRules;"));
     }
 
+    [Fact]
+    public async Task AlertSettings_RoundTrip()
+    {
+        var defaults = await _store!.LoadAlertSettingsAsync();
+        Assert.True(defaults.AlertsEnabled);
+        Assert.Equal(GuardPeriod.Today, defaults.Period);
+        Assert.Equal(GuardMetric.Total, defaults.Metric);
+
+        var custom = new GuardAlertSettings(
+            false,
+            200 * 1024 * 1024,
+            GuardPeriod.Rolling24Hours,
+            GuardMetric.Upload,
+            false,
+            TimeSpan.FromMinutes(15),
+            false,
+            10 * 1024 * 1024);
+        await _store.SaveAlertSettingsAsync(custom);
+
+        var loaded = await _store.LoadAlertSettingsAsync();
+        Assert.Equal(custom, loaded);
+    }
+
+    [Fact]
+    public async Task AppRule_RoundTrip()
+    {
+        var rule = new GuardAppRule(AppKey, GuardRuleMode.Ignored, 42, Base.AddHours(1));
+        await _store!.SaveAppRuleAsync(rule);
+
+        var loaded = Assert.Single(await _store.LoadAppRulesAsync());
+        Assert.Equal(rule, loaded);
+    }
+
+    [Fact]
+    public async Task Aggregates_SumOnlyRequestedProfileAndPeriod()
+    {
+        await _store!.WriteAsync(new[]
+        {
+            Sample(100, 10) with { FromUtc = Base, ToUtc = Base.AddSeconds(30) },
+            Sample(200, 20) with { FromUtc = Base.AddSeconds(30), ToUtc = Base.AddSeconds(60) },
+            Sample(300, 30) with
+            {
+                ProfileKey = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                FromUtc = Base.AddSeconds(60),
+                ToUtc = Base.AddSeconds(90),
+            },
+        });
+
+        var aggregates = await _store.ReadAggregatesAsync(ProfileKey, Base.AddSeconds(31));
+
+        var aggregate = Assert.Single(aggregates);
+        Assert.Equal(200, aggregate.DownloadBytes);
+        Assert.Equal(20, aggregate.UploadBytes);
+        Assert.Equal(1, aggregate.SampleCount);
+    }
+
+    [Fact]
+    public async Task AlertHistory_IsInsertedAndNotificationStatusUpdated()
+    {
+        await _store!.WriteAsync(new[] { Sample(100, 10) });
+        var record = new GuardAlertRecord(
+            0,
+            AppKey,
+            ProfileKey,
+            GuardPeriod.Today,
+            Base,
+            GuardAlertKind.Threshold,
+            100,
+            110,
+            100,
+            10,
+            Base.AddMinutes(1),
+            GuardNotificationStatus.Pending);
+
+        var id = await _store.InsertAlertAsync(record);
+        Assert.True(id > 0);
+
+        await _store.UpdateNotificationAsync(id, GuardNotificationStatus.Failed, "denied");
+        await using var connection = _factory!.Create();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT NotificationStatus, NotificationError FROM GuardAlertHistory WHERE AlertId = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(3, reader.GetInt32(0));
+        Assert.Equal("denied", reader.GetString(1));
+    }
+
+    [Fact]
+    public async Task ActiveSessionStart_IsReadForProfile()
+    {
+        await using (var connection = _factory!.Create())
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO HotspotProfiles
+                    (ProfileKey, DisplayName, InterfaceGuid, Ssid, CreatedAtUtc, LastSeenUtc)
+                VALUES
+                    ($key, 'TestHotspot', '11111111-1111-1111-1111-111111111111', 'TestHotspot',
+                     $now, $now);
+                INSERT INTO ConnectionSessions
+                    (ProfileId, SessionStatus, InterfaceGuid, Ssid, StartedAtUtc, CreatedAtUtc)
+                VALUES
+                    (last_insert_rowid(), 0, '11111111-1111-1111-1111-111111111111', 'TestHotspot',
+                     $started, $now);
+                """;
+            command.Parameters.AddWithValue("$key", ProfileKey);
+            command.Parameters.AddWithValue("$now", Base.ToString("O"));
+            command.Parameters.AddWithValue("$started", Base.AddMinutes(-5).ToString("O"));
+            command.ExecuteNonQuery();
+        }
+
+        Assert.Equal(Base.AddMinutes(-5), await _store!.GetActiveSessionStartAsync(ProfileKey));
+    }
+
     private static readonly DateTimeOffset Base = new(2026, 11, 17, 10, 0, 0, TimeSpan.Zero);
     private static readonly string AppKey = @"exe:c:\apps\demo.exe";
 

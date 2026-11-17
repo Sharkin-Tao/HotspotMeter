@@ -29,6 +29,7 @@ public sealed class TrafficGuardService : IAsyncDisposable
     private readonly TrafficDeltaCalculator _calculator;
     private readonly GuardOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly IGuardAlertEngine? _alertEngine;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly object _stateLock = new();
 
@@ -47,7 +48,8 @@ public sealed class TrafficGuardService : IAsyncDisposable
         GuardOptions? options = null,
         TimeProvider? timeProvider = null,
         AppIdentityResolver? identityResolver = null,
-        TrafficDeltaCalculator? calculator = null)
+        TrafficDeltaCalculator? calculator = null,
+        IGuardAlertEngine? alertEngine = null)
     {
         _usageSource = usageSource ?? throw new ArgumentNullException(nameof(usageSource));
         _processInspector = processInspector ?? throw new ArgumentNullException(nameof(processInspector));
@@ -58,6 +60,7 @@ public sealed class TrafficGuardService : IAsyncDisposable
         _calculator = calculator ?? new TrafficDeltaCalculator();
         _options = options ?? GuardOptions.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _alertEngine = alertEngine;
 
         if (_options.SamplingInterval < TimeSpan.FromSeconds(1))
         {
@@ -303,6 +306,23 @@ public sealed class TrafficGuardService : IAsyncDisposable
             : profileChanged
                 ? "ProfileBaseline"
                 : "NoNewTraffic";
+
+        if (samples.Count > 0 && _alertEngine is not null)
+        {
+            try
+            {
+                await _alertEngine.EvaluateAsync(target, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // 提醒是采样之后的旁路：规则/通知/提醒库失败绝不能影响已写入的样本。
+                _diagnostics.Report($"Traffic Guard 提醒评估失败：{ex.GetType().Name}", ex);
+            }
+        }
 
         return Publish(new GuardCaptureResult(
             true,

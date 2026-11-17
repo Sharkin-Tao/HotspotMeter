@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **Traffic Guard 第一阶段已完成（2026-11-17），等待用户验收；尚未提交** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源 + `TrafficGuard`（身份、状态分类、增量计算、采样服务）；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 **v4**、`ProcessInspector`/`DevicePathMapper`/`GuardStore`；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` + `TrafficStatsService` + `StatsWindow` + 中英双语 + `GuardUsageSource`/`GuardRuntime` + Guard 启停接线；发布见“阶段 7 实际结果”，Guard 见“Traffic Guard 第一阶段实际结果” |
-| 未实现 | Traffic Guard 的提醒弹窗/风险评分/阈值规则/信任列表 UI/结束进程/完整守护页（后续阶段）；周/月汇总、程序图标提取、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装程序/自动更新/代码签名；发布产物为便携 ZIP |
-| 下一次要做的事 | 用户验收 Traffic Guard 第一阶段：确认逐应用身份的判定口径（尤其系统伪条目列为不确定身份）、30 秒采样与“缺失不记 0”的行为；随后再决定提醒 UI/评分/阈值/信任列表的产品形态。 |
+| 当前阶段 | **Traffic Guard 第二阶段（规则引擎 + 智能提醒）已完成（2026-11-17），等待用户验收；尚未提交** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源 + `TrafficGuard`（身份、状态分类、增量计算、采样服务）+ `GuardRuleEngine`/`GuardAlertService`/`GuardAlertText`；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 **v5**、`ProcessInspector`/`DevicePathMapper`/`GuardStore`（含提醒仓储与聚合）；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` + `TrafficStatsService` + `StatsWindow` + 中英双语 + `GuardUsageSource`/`GuardRuntime` + `ToastNotificationSender` + Guard/提醒接线；发布见“阶段 7 实际结果”，Guard 见“Traffic Guard 第一/第二阶段实际结果” |
+| 未实现 | 流量守护完整设置/规则/信任列表/历史 UI、结束进程、风险评分、防火墙/自动阻断；周/月汇总、程序图标提取、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装程序/自动更新/代码签名；发布产物为便携 ZIP |
+| 下一次要做的事 | 用户验收 Traffic Guard 第二阶段：确认规则默认值（100 MB/自然日/上下行合计/仅后台/1 小时冷却/二次 50 MB）、提醒文案与通知观感；随后再决定守护设置页、信任/忽略 UI 与历史列表的产品形态。 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -269,6 +269,18 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **验证**：Debug/Release 构建 0 警告 0 错误；`dotnet test` **454/454**；现有 Stage5 自检通过（startup/taskbar/topmost/stats/monitor、`ui-layout=ok`），app.log 记录 Guard 已启动。
 - **未做**：提醒/评分/阈值/信任 UI、结束进程、守护页、24 小时长稳、真实睡眠/唤醒与网络切换专项人工验收；逐应用历史只在 Guard 采样表中，尚未做展示。
 
+### Traffic Guard 第二阶段实际结果（2026-11-17，规则引擎 + Windows 通知）
+
+- **范围**：全局/单程序阈值、三种周期（当前会话/本地自然日/滚动 24 小时）、三种口径（下载/上传/合计）、仅后台或全部、单程序信任/关闭/暂时忽略；首次提醒、冷却、二次增长提醒；Windows 11 原生 Toast 与中英文案；提醒结果写 `GuardAlertHistory`。不做守护完整 UI、结束进程、防火墙、评分。
+- **规则优先级**：全局开关 → 单程序 `Trusted/Disabled` → `Ignored`（到期恢复继承）→ 仅后台 → 阈值（单程序覆盖否则全局）→ 同周期去重 → 冷却 → 二次增长。判定为纯函数 `GuardRuleEngine`，无 I/O，边界可用模拟数据覆盖。
+- **默认值**：100 MB、自然日、上下行合计、仅后台、1 小时冷却、二次提醒开启且增长 50 MB；只作用于 Guard，不改变胶囊/统计/设置既有默认。
+- **周期起点**：`Session` 取 `ConnectionSessions` 中该 Profile 的活动会话 `StartedAtUtc`；`Today` 取本地时区零点转 UTC；`Rolling24Hours` 取评估时刻 −24 h。跨日/新会话会重新允许首次提醒。
+- **去重与失败隔离**：先插 `NotificationStatus=Pending` 再发通知，插入失败则不发送；`Show` 失败记 `Failed` + 错误摘要，记录不丢；单程序异常不阻断其他程序；提醒评估异常不影响已写入的流量样本。
+- **通知通道（已验证）**：未打包进程需 `SetCurrentProcessExplicitAppUserModelID` + 开始菜单快捷方式 + `PKEY_AppUserModel_ID`（x64 `PROPVARIANT` 必须 24 字节）+ `SHChangeNotify` + `CreateToastNotifier` + `Show`。未打包进程读 `ToastNotifier.Setting` 会抛 `0x80070490`，因此不据此判断权限；XML 必须 UTF-8，`activationType="foreground"`、`launch="stats"` 与 `<actions>` 齐全。
+- **数据库**：`SchemaMigrator.SupportedVersion=5`；v5 仅 `ALTER TABLE ADD COLUMN`，`GuardSettings` 增提醒列、`GuardAppRules` 增规则列、`GuardAlertHistory` 增周期/上下行/通知结果/处理时间与索引；不重建、不删除 v4 数据。
+- **验证**：Debug/Release 构建 0 警告 0 错误；`dotnet test` **485/485**；真实热点下把阈值临时调到 1 MB，30 秒内产生 2 条提醒记录，`NotificationStatus=1 (Sent)`、无错误，冷却期内未重复；周期起点为本地零点对应的 UTC。测试后已从备份恢复数据库并重新迁移为 v5，测试提醒记录已清除。
+- **限制**：勿扰模式/通知权限无法通过 API 可靠检测，只能记录 `Show` 异常或“已发送但可能被系统抑制”；提醒设置目前只有数据库/服务 API，没有守护设置页；二次提醒只在冷却结束且增长达到阈值时触发，关闭二次提醒后同周期不再重复。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -319,6 +331,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 29. Traffic Guard 实测：Windows 逐应用归属 API 约 **30 秒**刷新一次；4 MB 下载后约 12 秒内累计值不变，之后一次跳变约 4.1 MB，逐应用合计比网卡总量少约 4.5 MB（未归属差额），探针进程本身未出现在归属列表中。因此不能假设实时，也不可把缺失当 0。
 30. Traffic Guard v4 已实测：真实库 `user_version=4`，原有 52 会话/5439 快照/4 天日汇总仍在，`GuardTrafficSamples`/`GuardAppRules` 正常增长；样本间隔 30 秒，规则首末时间正常。
 31. Traffic Guard 身份实测：设备路径映射缺失时会产生伪 `exe:e:\device\...`；映射后恢复 `exe:c:\...`/`exe:e:\...`/`pkg:...`。无法确认的 `IPv6 Control Message` 已转为 `opaque:{hash}` + `IdentityCertain=0`，不会与真实 EXE 合并。
+32. Traffic Guard v5 已实测：真机库 `user_version=5`，v5 仅在 v4 上 `ADD COLUMN`，既有会话/快照/日汇总/Guard 样本保留；默认提醒配置为 100 MB、自然日、合计、仅后台、3600 秒冷却、二次 50 MB，提醒表初始为空。
+33. Windows Toast 未打包注册链路已实测可弹出：`SetCurrentProcessExplicitAppUserModelID` + 开始菜单 `.lnk` + `PKEY_AppUserModel_ID`（x64 `PROPVARIANT` 必须 24 字节）+ `SHChangeNotify` + `CreateToastNotifier` + `Show`；`ToastNotifier.Setting` 在未打包进程会抛 `0x80070490`，不能用于权限判断。
+34. 提醒实机验证：临时阈值 1 MB、关闭仅后台、冷却 60 s，真实热点 75 s 内产生 2 条提醒（Claude、node），`NotificationStatus=1 (Sent)`，再等 45 s 无重复；恢复备份后提醒记录归零、默认阈值恢复。
+35. 阶段 2 测试数 **485/485**（Debug/Release）；新增规则引擎、提醒服务、v5 迁移、GuardStore 扩展与“提醒异常不影响样本”用例。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -387,3 +403,4 @@ dotnet run --project tools/MonitorHost -- --ssid "TestHotspot" --seconds 20 --js
 | 2026-11-15 | 中英双语：`LanguageCatalog`/`LocalizationService`/`{loc:Tr}`、首次启动语言选择窗、`ui-state.Language`、设置/统计/胶囊/托盘即时切换；408 测试通过；新增 D-100～D-103、docs/11 |
 | 2026-11-15 | 阶段 7 发布：0.1.0 self-contained win-x64 文件夹 + 便携 ZIP + SHA256；发布目录与解压目录运行验证；截图脱敏、SSID/BSSID/GUID 替换、安全扫描；新增 docs/11–13、D-104～D-108；安装包未制作（工具缺失） |
 | 2026-11-17 | Traffic Guard 第一阶段：Core 身份/状态/增量/采样服务，Infrastructure 进程检查与 v4 存储，App WinRT 来源与启停接线；454 测试通过；新增 D-109～D-114；未提交 |
+| 2026-11-17 | Traffic Guard 第二阶段：纯规则引擎（三周期/三口径/信任/忽略/冷却/二次）、`GuardAlertService` 先落库后通知、Windows Toast 未打包注册、v5 增量迁移、中英文案；485 测试通过；新增 D-115～D-120；本地独立提交 |

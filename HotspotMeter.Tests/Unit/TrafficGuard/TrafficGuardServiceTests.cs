@@ -45,6 +45,24 @@ public sealed class TrafficGuardServiceTests
     }
 
     [Fact]
+    public async Task AlertEngineFailure_DoesNotFailSampleWrite()
+    {
+        var env = new Environment(
+            snapshot: Available(DemoUsage),
+            processes: DemoProcesses(),
+            alertEngine: new ThrowingAlertEngine());
+        await env.Service.CaptureOnceAsync();
+
+        env.Time.Now = T0.AddSeconds(30);
+        env.Source.Snapshot = Available(new GuardUsageEntry(@"C:\Apps\demo.exe", "demo.exe", 1_600, 250));
+        var result = await env.Service.CaptureOnceAsync();
+
+        Assert.Equal(1, result.SampleCount);
+        Assert.Single(env.Sink.Batches);
+        Assert.Contains(env.Diagnostics.Messages, message => message.Contains("提醒评估失败"));
+    }
+
+    [Fact]
     public async Task UnavailableApi_DoesNotWriteZeroSamples_AndNextCaptureRebuildsBaseline()
     {
         var env = new Environment(snapshot: Available(DemoUsage), processes: DemoProcesses());
@@ -191,7 +209,10 @@ public sealed class TrafficGuardServiceTests
 
     private sealed class Environment
     {
-        public Environment(GuardUsageSnapshot snapshot, IReadOnlyList<ProcessObservation> processes)
+        public Environment(
+            GuardUsageSnapshot snapshot,
+            IReadOnlyList<ProcessObservation> processes,
+            IGuardAlertEngine? alertEngine = null)
         {
             Source = new FakeUsageSource { Snapshot = snapshot };
             Inspector = new FakeInspector { Processes = processes };
@@ -206,7 +227,8 @@ public sealed class TrafficGuardServiceTests
                 Targets,
                 Diagnostics,
                 new GuardOptions(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(90)),
-                Time);
+                Time,
+                alertEngine: alertEngine);
         }
 
         public FakeUsageSource Source { get; }
@@ -257,6 +279,12 @@ public sealed class TrafficGuardServiceTests
     {
         public GuardTarget? Current { get; set; }
         public GuardTarget? GetTarget() => Current;
+    }
+
+    private sealed class ThrowingAlertEngine : IGuardAlertEngine
+    {
+        public Task EvaluateAsync(GuardTarget target, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("alert failed");
     }
 
     private sealed class FakeDiagnostics : IGuardDiagnostics

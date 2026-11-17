@@ -31,6 +31,7 @@ public partial class App : Application, ISettingsHost
     private MonitorSessionService? _monitor;
     private GuardStore? _guardStore;
     private TrafficGuardService? _guardService;
+    private ToastNotificationSender? _toastSender;
     private bool _exiting;
     private StartupRegistration? _lastStartupWrite;
 
@@ -308,13 +309,30 @@ public partial class App : Application, ISettingsHost
 
             var interval = TimeSpan.FromSeconds(settings.SamplingIntervalSeconds);
             var options = new GuardOptions(interval, TimeSpan.FromSeconds(Math.Max(90, settings.SamplingIntervalSeconds * 3)));
+            _toastSender = new ToastNotificationSender(
+                () => Dispatcher.BeginInvoke(OpenStats),
+                (message, exception) =>
+                {
+                    AppLog.Info(message);
+                    if (exception is not null)
+                    {
+                        AppLog.Info(exception.ToString());
+                    }
+                });
+            var diagnostics = new GuardDiagnostics();
+            var alertService = new GuardAlertService(
+                _guardStore,
+                _toastSender,
+                LocalizationService.T,
+                diagnostics: diagnostics);
             _guardService = new TrafficGuardService(
                 new GuardUsageSource(),
                 new ProcessInspector(),
                 _guardStore,
                 new MonitorGuardTargetProvider(_monitor!),
-                new GuardDiagnostics(),
-                options);
+                diagnostics,
+                options,
+                alertEngine: alertService);
 
             await _guardService.StartAsync();
             AppLog.Info($"Traffic Guard 已启动，采样周期 {settings.SamplingIntervalSeconds} 秒。");
@@ -334,6 +352,9 @@ public partial class App : Application, ISettingsHost
                 await _guardStore.DisposeAsync();
                 _guardStore = null;
             }
+
+            _toastSender?.Dispose();
+            _toastSender = null;
         }
     }
 
@@ -375,6 +396,9 @@ public partial class App : Application, ISettingsHost
 
             _guardStore = null;
         }
+
+        _toastSender?.Dispose();
+        _toastSender = null;
 
         if (_monitor is not null)
         {

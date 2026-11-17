@@ -222,3 +222,23 @@ Guard 与现有网卡流量监控**并行但独立**：网卡引擎负责会话/
 **为什么 30 秒**：WinRT 归属 API 实测约 30 秒刷新一次，低于该频率只会重复读到同一累计值；首轮只建基线，避免把历史累计当成本轮流量。高于 90 秒的间隔标 `IntervalGap`，仍按真实差值计算但不假设连续。
 
 **边界**：本阶段不写提醒/评分/信任 UI；`GuardAlertHistory` 只建表；不做进程结束/防火墙；不把未归属流量分摊给任何程序。
+
+## Traffic Guard 第二阶段组件（2026-11-17）
+
+第二阶段在采样链路上增加“规则判定 → 提醒记录 → Windows 通知”，仍不改变网卡采集与 Guard 增量口径。
+
+| 层 | 组件 | 职责 |
+| --- | --- | --- |
+| Core | `TrafficGuard/GuardAlertModels` | 周期、口径、规则模式、提醒类型、通知状态、设置/规则/聚合/记录/决策模型与仓储/发送/引擎接口 |
+| Core | `GuardRuleEngine` | 纯函数判定；优先级：总开关 → Trusted/Disabled → Ignored（到期恢复）→ 仅后台 → 阈值（单程序覆盖）→ 同周期去重 → 冷却 → 二次增长 |
+| Core | `GuardAlertService` | 解析周期起点；读聚合/规则/最近提醒；逐程序判定；先插 Pending 再发送；更新 Sent/Failed；单程序异常隔离 |
+| Core | `GuardAlertText` | 中英文案与占位符；只陈述“检测到某程序使用较多流量”，不推断更新/异常/恶意 |
+| Infrastructure | `GuardStore`（扩展） | `IGuardAlertRepository`：设置/规则读写、按 `ProfileKey`+`ToUtc>=from` 聚合、活动会话起点、最新提醒、插入提醒、更新通知结果；仍走单 `SqliteWriter` |
+| App | `ToastNotificationSender` | 未打包进程注册 AUMID、确保开始菜单快捷方式、构造 Toast XML、`Show` 并回传结果；`Activated` 打开统计窗 |
+| App | `App.xaml.cs` | 注入 `GuardAlertService`，Guard 写样本成功后评估；通知失败只记录，不影响采样 |
+
+**为什么先落库再通知**：通知可能被权限、勿扰或 Shell 拒绝；若先弹窗后写库，失败时既没有记录也无法追溯。当前顺序保证“有记录才可能有通知”，失败状态可审计。
+
+**通知边界**：未打包进程读取 `ToastNotifier.Setting` 会抛 `0x80070490`，因此不据此判断权限；`Show` 抛异常记 `Failed`，成功记 `Sent`。勿扰模式/通知权限被关闭时系统可能静默抑制，程序无法可靠区分，文档与界面文案不得声称“必定弹出”。
+
+**周期**：`Session` 使用活动会话起点；`Today` 使用本地自然日零点转 UTC；`Rolling24Hours` 使用评估时刻 −24 h。时区在周期中途变化时，下一轮重新取边界，不追溯修改已写样本。

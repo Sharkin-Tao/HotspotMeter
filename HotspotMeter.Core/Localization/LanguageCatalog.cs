@@ -206,6 +206,18 @@ public static class LanguageCatalog
         ["Warning_CounterFailure"] = "暂时无法读取网卡计数，正在重试。",
         ["Warning_ImplausibleDelta"] = "检测到异常大的流量增量，已保留数据并继续监控。",
         ["Capsule_WaitingForHotspot"] = "等待已连接的 Wi-Fi 热点…（后台每 5 秒重新检测）",
+
+        ["Guard_AlertTitle"] = "流量提醒",
+        ["Guard_AlertSecondaryTitle"] = "流量继续增长",
+        ["Guard_AlertBody"] = "检测到 {0} 在{6}内累计使用 {1}（下载 {2}，上传 {3}），已达到 {4} 阈值。当前状态：{5}。",
+        ["Guard_AlertSecondaryBody"] = "检测到 {0} 在{6}内流量继续增长，累计 {1}（下载 {2}，上传 {3}），已超过 {4} 阈值。当前状态：{5}。",
+        ["Guard_AlertAction"] = "查看流量统计",
+        ["Guard_PeriodSession"] = "本次连接",
+        ["Guard_PeriodToday"] = "今天",
+        ["Guard_PeriodRolling24h"] = "最近 24 小时",
+        ["Guard_StateForeground"] = "前台",
+        ["Guard_StateBackground"] = "后台",
+        ["Guard_StateIdle"] = "空闲",
     };
 
     private static readonly Dictionary<string, string> EnglishStrings = new(StringComparer.Ordinal)
@@ -353,5 +365,17 @@ public static class LanguageCatalog
         ["Warning_CounterFailure"] = "Adapter counters are temporarily unavailable; retrying.",
         ["Warning_ImplausibleDelta"] = "An unusually large traffic delta was observed; data was kept and monitoring continues.",
         ["Capsule_WaitingForHotspot"] = "Waiting for a connected Wi-Fi hotspot… (retrying every 5 seconds)",
+
+        ["Guard_AlertTitle"] = "Traffic alert",
+        ["Guard_AlertSecondaryTitle"] = "Traffic keeps growing",
+        ["Guard_AlertBody"] = "Detected {0} using {1} {6} (download {2}, upload {3}), reaching the {4} threshold. Current state: {5}.",
+        ["Guard_AlertSecondaryBody"] = "Detected {0} continuing to grow {6}: {1} total (download {2}, upload {3}), above the {4} threshold. Current state: {5}.",
+        ["Guard_AlertAction"] = "View traffic statistics",
+        ["Guard_PeriodSession"] = "this connection",
+        ["Guard_PeriodToday"] = "today",
+        ["Guard_PeriodRolling24h"] = "in the last 24 hours",
+        ["Guard_StateForeground"] = "Foreground",
+        ["Guard_StateBackground"] = "Background",
+        ["Guard_StateIdle"] = "Idle",
     };
 }

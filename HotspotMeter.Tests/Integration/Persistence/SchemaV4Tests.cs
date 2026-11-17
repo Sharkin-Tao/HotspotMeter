@@ -1,4 +1,4 @@
-using HotspotMeter.Infrastructure.Persistence;
+﻿using HotspotMeter.Infrastructure.Persistence;
 using HotspotMeter.Tests.TestSupport;
 using Microsoft.Data.Sqlite;
 
@@ -34,8 +34,8 @@ public sealed class SchemaV4Tests : IDisposable
 
         var version = new SchemaMigrator().Migrate(connection);
 
-        Assert.Equal(4, version);
-        Assert.Equal(4, SchemaMigrator.ReadUserVersion(connection));
+        Assert.Equal(SchemaMigrator.SupportedVersion, version);
+        Assert.Equal(SchemaMigrator.SupportedVersion, SchemaMigrator.ReadUserVersion(connection));
         Assert.Equal(1L, Scalar(connection, "SELECT COUNT(*) FROM HotspotProfiles;"));
         foreach (var table in new[] { "GuardSettings", "GuardAppRules", "GuardTrafficSamples", "GuardAlertHistory" })
         {
@@ -51,8 +51,8 @@ public sealed class SchemaV4Tests : IDisposable
     public void Migrate_IsIdempotent()
     {
         using var connection = Factory().Create();
-        Assert.Equal(4, new SchemaMigrator().Migrate(connection));
-        Assert.Equal(4, new SchemaMigrator().Migrate(connection));
+        Assert.Equal(SchemaMigrator.SupportedVersion, new SchemaMigrator().Migrate(connection));
+        Assert.Equal(SchemaMigrator.SupportedVersion, new SchemaMigrator().Migrate(connection));
         Assert.Equal(1L, Scalar(connection, "SELECT COUNT(*) FROM GuardSettings;"));
     }
 

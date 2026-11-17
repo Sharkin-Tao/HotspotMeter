@@ -288,3 +288,26 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 3. 系统伪条目的业务解释（如 `IPv6 Control Message`）只按“不确定身份”处理，未做人工映射。
 4. 逐应用样本尚未接入统计窗口展示；本阶段只验证写入正确。
 5. 提醒/评分/阈值/信任 UI/结束进程/防火墙未实现，属后续阶段。
+
+## Traffic Guard 第二阶段验收记录（2026-11-17）
+
+### 自动化测试
+
+- `dotnet build HotspotMeter.sln -c Debug`：0 警告 0 错误。
+- `dotnet test`：**485/485**；Release 构建与 `dotnet test -c Release` 同样 485/485。
+- 新增覆盖：全局/单程序阈值继承、三周期起点、三口径、仅后台、Trusted/Disabled/Ignored、同周期去重、冷却、二次增长、ProfileKey 切换、缺失/重复/时间异常、活动会话起点、通知成功/失败、失败仍保留记录、提醒异常不影响样本、v4→v5 迁移与幂等、GuardStore 聚合/规则/提醒。
+
+### 运行时验收
+
+- 用户数据库先备份；启动后 `user_version=5`，默认配置 100 MB/自然日/合计/仅后台/3600 秒/二次 50 MB，提醒表 0 条。
+- 临时改为 1 MB、关闭仅后台、冷却 60 秒，连接真实热点运行 75 秒：产生 2 条 `GuardAlertHistory`（Claude、node），`NotificationStatus=1 (Sent)`、`NotificationError=NULL`；`PeriodStartUtc` 为本地零点对应的 UTC。
+- 继续等待 45 秒无重复提醒，冷却与同周期去重生效。
+- 停止应用后恢复备份并重新启动：数据库迁移为 v5，提醒记录归零，阈值恢复 100 MB；未删除用户历史会话/快照/日汇总。
+- 现有 Stage5 自检仍通过（startup/taskbar/topmost/stats/monitor），Guard 与既有功能并行。
+
+### 未验证/限制
+
+- 勿扰模式、通知权限关闭、系统静默抑制无法可靠检测；只能记录 `Show` 异常或“已发送”。
+- 没有守护设置页/规则 UI，规则目前通过数据库/服务 API 配置；用户无法在界面修改。
+- 未做 24 小时长稳、真实睡眠/唤醒、真实网络切换专项人工验收。
+- 二次提醒只在冷却结束且增长达到阈值时触发；没有“同一周期无限次提醒”的选项。
