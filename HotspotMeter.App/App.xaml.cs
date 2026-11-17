@@ -5,7 +5,10 @@ using HotspotMeter.App.Services;
 using HotspotMeter.App.ViewModels;
 using HotspotMeter.App.Views;
 using HotspotMeter.Core.Localization;
+using HotspotMeter.Core.TrafficGuard;
+using HotspotMeter.Infrastructure.Persistence;
 using HotspotMeter.Infrastructure.SingleInstance;
+using HotspotMeter.Infrastructure.TrafficGuard;
 
 namespace HotspotMeter.App;
 
@@ -26,6 +29,8 @@ public partial class App : Application, ISettingsHost
     private readonly AttributedUsageReader _usageReader = new();
     private TrayIconService? _tray;
     private MonitorSessionService? _monitor;
+    private GuardStore? _guardStore;
+    private TrafficGuardService? _guardService;
     private bool _exiting;
     private StartupRegistration? _lastStartupWrite;
 
@@ -119,6 +124,9 @@ public partial class App : Application, ISettingsHost
         {
             return;
         }
+
+        // Guard 与热点连接解耦：启动时未连接也要运行，等目标出现后由采样循环自然建立基线。
+        await StartTrafficGuardAsync();
 
         // 开发期自检入口：默认关闭，只有显式设置环境变量才运行。
         var selfTestPath = Environment.GetEnvironmentVariable("HOTSPOTMETER_UI_TEST");
@@ -277,11 +285,96 @@ public partial class App : Application, ISettingsHost
 
     public void ResetPosition() => _capsule.ResetToDefaultPosition();
 
+    /// <summary>
+    /// 启动 Traffic Guard。任何失败都只记录并保留主程序，不把监控/统计带走。
+    /// 配置在 GuardSettings 中，默认启用；后续阶段再做设置页开关。
+    /// </summary>
+    private async Task StartTrafficGuardAsync()
+    {
+        try
+        {
+            var paths = DatabasePaths.CreateDefault();
+            new DatabaseBootstrapper(paths).Initialize();
+            var factory = new SqliteConnectionFactory(paths.DatabaseFile);
+            _guardStore = new GuardStore(factory);
+            var settings = await _guardStore.LoadSettingsAsync();
+            if (!settings.Enabled)
+            {
+                AppLog.Info("Traffic Guard 已禁用，未启动采样。");
+                await _guardStore.DisposeAsync();
+                _guardStore = null;
+                return;
+            }
+
+            var interval = TimeSpan.FromSeconds(settings.SamplingIntervalSeconds);
+            var options = new GuardOptions(interval, TimeSpan.FromSeconds(Math.Max(90, settings.SamplingIntervalSeconds * 3)));
+            _guardService = new TrafficGuardService(
+                new GuardUsageSource(),
+                new ProcessInspector(),
+                _guardStore,
+                new MonitorGuardTargetProvider(_monitor!),
+                new GuardDiagnostics(),
+                options);
+
+            await _guardService.StartAsync();
+            AppLog.Info($"Traffic Guard 已启动，采样周期 {settings.SamplingIntervalSeconds} 秒。");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Info($"Traffic Guard 启动失败：{ex.Message}");
+            CrashLog.Write(ex, "TrafficGuardStart");
+            if (_guardService is not null)
+            {
+                await _guardService.DisposeAsync();
+                _guardService = null;
+            }
+
+            if (_guardStore is not null)
+            {
+                await _guardStore.DisposeAsync();
+                _guardStore = null;
+            }
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         _exiting = true;
         _tray?.Dispose();
         _tray = null;
+
+        if (_guardService is not null)
+        {
+            try
+            {
+                var dispose = Task.Run(() => _guardService.DisposeAsync().AsTask());
+                if (!dispose.Wait(TimeSpan.FromSeconds(2)))
+                {
+                    AppLog.Info("退出时 Traffic Guard 释放超时。");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Info($"退出时 Traffic Guard 释放失败：{ex.Message}");
+            }
+
+            _guardService = null;
+        }
+
+        if (_guardStore is not null)
+        {
+            try
+            {
+                var dispose = Task.Run(() => _guardStore.DisposeAsync().AsTask());
+                dispose.Wait(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Info($"退出时 Guard 存储释放失败：{ex.Message}");
+            }
+
+            _guardStore = null;
+        }
 
         if (_monitor is not null)
         {

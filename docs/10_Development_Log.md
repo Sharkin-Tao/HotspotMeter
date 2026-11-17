@@ -1125,3 +1125,19 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 - 文档：README 中英、`docs/11_Release_Checklist.md`、`docs/12_Release_Notes.md`、`docs/13_Localization.md`、PROJECT_CONTEXT、docs/02/04/05/08/09。
 - 验证：Release 构建 0 警告 0 错误；`dotnet test -c Release --no-build` **408/408**；未做安装程序、代码签名、干净虚拟机、混合 DPI/多显示器、24 h 长稳。
 - 结论：便携版可交付；整体“有条件进入发布”。新增决策 D-104～D-108。
+
+## 2026-11-17 Traffic Guard 第一阶段：逐应用守护引擎 + schema v4
+
+- 基线：`main@7767ae4`，工作区干净；现有 schema v3、测试 408。无匹配的 C#/.NET Skill，按项目现有技术方案执行。
+- 先验证 WinRT 刷新频率（临时探针，不入库）：4 MB 下载后约 12 秒内累计值不变，约每 30 秒跳变一次；逐应用合计比网卡总量少约 4.5 MB；探针进程本身未出现在归属列表中。结论：采样 30 秒、首轮只建基线、缺失不记 0、未归属不分摊。
+- 新增 Core `TrafficGuard`：`AppIdentity`（exe/pkg/uncertain/opaque）、`AppIdentityResolver`、`ProcessStateClassifier`、`TrafficDeltaCalculator`（基线/回退/切换/缺失/长间隔/回滚）、`TrafficGuardService`（Start/Pause/Resume/Stop、30 秒循环、防重复）、端口接口。
+- 新增 Infrastructure：`ProcessInspector`（Toolhelp32、完整路径、PFN、前台/可见窗口、cloaked 过滤）、`DevicePathMapper`（设备路径→DOS）、`GuardStore`（事务 upsert 规则+样本、幂等）、`SchemaV4` 与迁移；`SupportedVersion=4`。
+- 新增 App：`GuardUsageSource`（WinRT 归属，精确 adapter+SSID）、`GuardRuntime`（目标 ProfileKey、诊断）、`App.xaml.cs` 接线；Guard 与 Monitor 并行，退出先 Guard 后 Monitor；初始化失败不影响主程序。
+- 修复运行时缺陷 1：设备路径未映射时生成伪 `exe:e:\device\...`；重建 App 并引入 `DevicePathMapper` 后恢复 `exe:c:\...`/`exe:e:\...`/`pkg:...`。
+- 修复运行时缺陷 2：`\device\...\IPv6 Control Message` 无 `.exe` 扩展却被当作 EXE；改为 `opaque:{hash}` + `IdentityKind=3/IdentityCertain=0`，新增单测。
+- 将 Guard 启动改为无条件（不再等 `_monitor.IsRunning`），热点晚到也能在出现后建基线；监控失败仍只记录。
+- 测试：新增身份/状态/增量/服务/迁移/存储用例；`SchemaV2Tests`/`SchemaV3Tests` 版本号改用 `SupportedVersion`（未弱化断言）。Debug/Release 构建 0/0，测试 **454/454**。
+- 运行时：真实热点采样 78 秒 8 条、76 秒 45 条；多进程样本 `ProcessCount=2/3/10`，出现 `Foreground` 与不确定身份；实际库 `user_version=4`，52 会话/5439 快照/4 天数据保留，`GuardTrafficSamples=52`、`GuardAppRules=13`。
+- 现有 Stage5 自检 Release 退出码 0：startup/taskbar/topmost/stats/monitor 全通过，`ui-layout=ok texts=5`；app.log 有 Guard 启动记录，无回归。
+- 文档：PROJECT_CONTEXT、docs/03、docs/04 §13、docs/07、docs/09 D-109～D-114、本日志。
+- 未做：提醒/评分/阈值/信任 UI/结束进程/守护页；24 小时 soak、真实睡眠/网络切换人工验收；逐应用样本尚未在统计窗口展示。

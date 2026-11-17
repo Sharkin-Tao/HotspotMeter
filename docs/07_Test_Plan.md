@@ -248,3 +248,43 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 4. 多显示器混合 DPI、不同屏幕分辨率。
 5. 24 小时以上长稳与内存/句柄增长。
 6. 真实鼠标拖拽、托盘菜单展开、Explorer 重启、睡眠唤醒。
+
+## Traffic Guard 第一阶段验收记录（2026-11-17）
+
+### 自动化测试
+
+| 命令 | 结果 |
+| --- | --- |
+| `dotnet build HotspotMeter.sln -c Debug` | 0 警告 / 0 错误 |
+| `dotnet build HotspotMeter.sln -c Release` | 0 警告 / 0 错误 |
+| `dotnet test HotspotMeter.sln -c Debug` | **454 通过 / 0 失败 / 0 跳过** |
+| `dotnet test HotspotMeter.sln -c Release --no-build` | **454 通过 / 0 失败 / 0 跳过** |
+
+新增/扩展用例覆盖：
+
+| 类别 | 用例要点 |
+| --- | --- |
+| 身份 | 同名不同目录不合并；路径规范化（大小写/分隔符/相对路径）；PFN 大小写；Uncertain 不合并；空归属返回 null；设备路径映射；包族名；非 `.exe` 伪路径转 opaque |
+| 多 PID | 同 AppKey 多进程聚合为一个样本，`ProcessCount=2`；UWP 多进程按 PFN 合并 |
+| 状态 | 前台 PID→Foreground；无窗口有流量→Background；无前台/无可见窗口/无增量→Idle |
+| 增量 | 首帧只建基线；第二帧只算正增量；同时间戳去重；任一方向回退重建；ProfileKey 变化清空；缺失程序删除基线；长间隔 `IntervalGap`；`RestoreState` 回滚；负累计拒绝；零增量不产样本 |
+| 生命周期 | 暂停不采样、恢复重建基线；停止后可重启；重复 Start 不重复循环；读取异常不逃逸；写库失败回滚后下一轮重试不丢字节 |
+| 网络/目标 | API 不可用不写样本、恢复后重建基线；目标丢失重置；网络切换后基线清空；空归属直接跳过 |
+| 迁移 | v3→v4 保留 HotspotProfiles 与历史；重复迁移幂等；四表/索引/种子；CHECK 约束；样本拒绝 0 字节/重复/缺规则/非法 ProfileKey；Kind=3 必须 certain=0；故障注入迁移失败回滚且旧库完整 |
+| 存储 | 规则+样本事务写入；重复样本幂等；规则名称/LastSeen 更新；设置往返；非法 ProfileKey 整批不写 |
+
+### 运行时验收
+
+- 真实热点连接时启动，Guard 日志 `Traffic Guard 已启动，采样周期 30 秒。`
+- 连续采样 78 秒：8 条样本、0 条错误路径；`exe:c:\...`/`exe:e:\...`/`pkg:...` 正确，多进程样本 `ProcessCount=2/3`。
+- 再次运行 76 秒：45 条样本；`opaque:… / IPv6 Control Message` 为 `IdentityKind=3/IdentityCertain=0`（2 条不确定样本）；出现 `Foreground` 样本（`ProcessCount=10`）。
+- 实际库 `user_version=4`，原有 52 会话/5439 快照/4 天日汇总保留；`GuardTrafficSamples=52`、`GuardAppRules=13`；样本间隔 30 秒。
+- 现有 `HOTSPOTMETER_STAGE5_TEST` 自检通过：startup/taskbar/topmost/stats/monitor、`ui-layout=ok texts=5`，退出码 0；胶囊/统计/托盘/设置无回归。
+
+### 未验证/限制
+
+1. 24 小时长稳、内存/句柄增长；测试用生命周期用例替代，未做 soak。
+2. 真实睡眠/唤醒、网络切换、程序退出/重启的长时间人工验收。
+3. 系统伪条目的业务解释（如 `IPv6 Control Message`）只按“不确定身份”处理，未做人工映射。
+4. 逐应用样本尚未接入统计窗口展示；本阶段只验证写入正确。
+5. 提醒/评分/阈值/信任 UI/结束进程/防火墙未实现，属后续阶段。

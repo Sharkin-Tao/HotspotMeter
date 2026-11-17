@@ -21,7 +21,7 @@ public class SchemaV2Tests
         using var temp = new TempDirectory();
         using var connection = CreateMigratedConnection(temp);
 
-        Assert.Equal(3, SchemaMigrator.ReadUserVersion(connection));
+        Assert.Equal(SchemaMigrator.SupportedVersion, SchemaMigrator.ReadUserVersion(connection));
 
         var tables = ReadNames(connection, "table");
         Assert.Superset(
@@ -54,7 +54,7 @@ public class SchemaV2Tests
 
         var version = new SchemaMigrator().Migrate(connection);
 
-        Assert.Equal(3, version);
+        Assert.Equal(SchemaMigrator.SupportedVersion, version);
         Assert.Equal(1, Count(connection, "SELECT COUNT(*) FROM SchemaInfo WHERE Key = 'created_at_utc';"));
         Assert.Equal(1, Count(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'TrafficSnapshots';"));
     }

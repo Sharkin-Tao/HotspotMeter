@@ -24,14 +24,15 @@ public sealed class SchemaV3Tests : IDisposable
     private SqliteConnectionFactory Factory() => new(_directory.File("hotspotmeter.db"));
 
     [Fact]
-    public void Migrate_FreshDatabase_ReachesVersion3()
+    public void Migrate_FreshDatabase_ReachesSupportedVersion()
     {
         using var connection = Factory().Create();
 
         var version = new SchemaMigrator().Migrate(connection);
 
-        Assert.Equal(3, version);
-        Assert.Equal(3, SchemaMigrator.ReadUserVersion(connection));
+        Assert.Equal(SchemaMigrator.SupportedVersion, version);
+        Assert.Equal(SchemaMigrator.SupportedVersion, SchemaMigrator.ReadUserVersion(connection));
+        Assert.True(version >= 3);
         Assert.True(TableExists(connection, "TrafficOperations"));
         Assert.True(IndexExists(connection, "IX_Operations_Session_FromUtc"));
         Assert.True(TableExists(connection, "TrafficSnapshots"));
@@ -49,7 +50,7 @@ public sealed class SchemaV3Tests : IDisposable
 
         var version = new SchemaMigrator().Migrate(connection);
 
-        Assert.Equal(3, version);
+        Assert.Equal(SchemaMigrator.SupportedVersion, version);
         Assert.Equal(1L, Scalar(connection, "SELECT COUNT(*) FROM HotspotProfiles;"));
         Assert.Equal(1L, Scalar(connection, "SELECT COUNT(*) FROM ConnectionSessions;"));
         Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM TrafficOperations;"));
@@ -63,7 +64,7 @@ public sealed class SchemaV3Tests : IDisposable
 
         var exception = Assert.Throws<DatabaseVersionTooNewException>(() => new SchemaMigrator().Migrate(connection));
         Assert.Equal(99, exception.CurrentVersion);
-        Assert.Equal(3, exception.SupportedVersion);
+        Assert.Equal(SchemaMigrator.SupportedVersion, exception.SupportedVersion);
     }
 
     [Fact]

@@ -326,4 +326,72 @@ PRAGMA busy_timeout = 5000;
 - 读取顺序：`Load()` → `LanguageCatalog.TryNormalize` → 有效则 `LocalizationService.SetLanguage`；否则主流程在单实例检查后显示 `LanguageWindow`。
 - 用户确认后才 `Update(s => s.Language = ...)`；取消/关闭语言窗不写入，也不重置其他字段。
 - 语言只影响展示（文案、日期文化、数字分组），**不进入数据库**，不改历史流量、会话、日汇总或统计口径；切换语言不会触发任何写库操作。
-- 数据库 Schema 仍为 `user_version=3`，本次未新增/修改表、列、索引。
+- 国际化本身未改数据库；当时仍为 `user_version=3`。2026-11-17 的 Traffic Guard 第一阶段将 schema 升到 v4，见 §13。
+
+## 13. Traffic Guard 数据层（v4，2026-11-17）
+
+阶段 1 只做增量迁移，**不修改/重建** v1–v3 任何表；`SchemaMigrator.SupportedVersion=4`，迁移在单事务内执行，失败回滚并保留旧库。实际用户库已从 v3 升到 v4，原有会话、快照、日汇总仍在（实测 52 会话/5439 快照/4 天）。
+
+### 13.1 GuardSettings（单行）
+
+```sql
+CREATE TABLE GuardSettings (
+    Id                      INTEGER PRIMARY KEY NOT NULL CHECK (Id = 1),
+    Enabled                 INTEGER NOT NULL CHECK (Enabled IN (0, 1)),
+    SamplingIntervalSeconds INTEGER NOT NULL CHECK (SamplingIntervalSeconds BETWEEN 10 AND 300),
+    DataRetentionDays       INTEGER NOT NULL CHECK (DataRetentionDays BETWEEN 1 AND 3650),
+    UpdatedAtUtc            TEXT    NOT NULL CHECK (33 字符 UTC 文本校验)
+);
+INSERT OR IGNORE ... (1, 1, 30, 30, now);
+```
+
+默认启用、30 秒采样、保留 30 天；本阶段没有设置 UI，读取值即可。
+
+### 13.2 GuardAppRules
+
+| 列 | 含义 |
+| --- | --- |
+| `AppKey` | 主键；`exe:{规范化完整路径}` / `pkg:{小写 PFN}` / `uncertain:{pid}:{startTicks}:{name}` / `opaque:{hash}` |
+| `DisplayName` | 可读名称，仅展示用途，不参与身份判断 |
+| `IdentityKind` | 1 桌面 EXE、2 UWP/MSIX、3 不确定 |
+| `IdentityCertain` | 0/1；Kind=3 必须为 0（CHECK 强制） |
+| `TrustState` | 预留给后续信任列表；本阶段默认 0，不做 UI |
+| `FirstSeenAtUtc/LastSeenAtUtc` | 首次/最近写入样本时间；`LastSeen >= FirstSeen` |
+
+同名程序靠完整路径区分；UWP 多进程靠 PFN 合并；不确定身份不会与确定身份合并。
+
+### 13.3 GuardTrafficSamples
+
+```sql
+CREATE TABLE GuardTrafficSamples (
+    SampleId      INTEGER PRIMARY KEY AUTOINCREMENT,
+    AppKey        TEXT    NOT NULL REFERENCES GuardAppRules(AppKey),
+    ProfileKey    TEXT    NOT NULL CHECK (32 位小写十六进制),
+    FromUtc       TEXT    NOT NULL,
+    ToUtc         TEXT    NOT NULL,
+    CapturedAtUtc TEXT    NOT NULL,
+    DownloadBytes INTEGER NOT NULL CHECK (>= 0),
+    UploadBytes   INTEGER NOT NULL CHECK (>= 0),
+    ActivityState INTEGER NOT NULL CHECK (IN (0,1,2)),  -- 0 前台 / 1 后台 / 2 空闲
+    ProcessCount  INTEGER NOT NULL CHECK (>= 0),
+    QualityFlags  INTEGER NOT NULL CHECK (BETWEEN 0 AND 63),
+    CHECK (FromUtc <= ToUtc),
+    CHECK (CapturedAtUtc >= ToUtc),
+    CHECK (DownloadBytes > 0 OR UploadBytes > 0),
+    UNIQUE (AppKey, ProfileKey, FromUtc, ToUtc)
+);
+```
+
+- 只写**已确认的正增量**；0/缺失/失败不落行，避免“缺失=0”。
+- `UNIQUE` + `INSERT ... ON CONFLICT DO NOTHING` 保证重复提交幂等。
+- 未归属流量没有 `AppKey`，不允许写入本表，也不分摊。
+- 索引：`(ProfileKey,ToUtc)` 与 `(AppKey,ToUtc)`，支持按热点/程序时间查询。
+- `QualityFlags` 目前用 `IntervalGap=1` 表示采样间隔超过阈值；位定义在 Core 中，数据库只存整数。
+
+### 13.4 GuardAlertHistory（预留）
+
+只建表：`AlertId/AppKey/ProfileKey/AlertType/ThresholdBytes/ActualBytes/CreatedAtUtc/IsDismissed/Details`，`AppKey` 删除时 `SET NULL`。本阶段**不写任何提醒业务**，后续提醒/评分/阈值功能再接入。
+
+### 13.5 事务与失败处理
+
+`GuardStore.WriteAsync` 在单个事务内 upsert `GuardAppRules` + 插入样本；任一行失败整批回滚，调用方（`TrafficGuardService`）恢复内存基线，下一轮从旧基线重算，避免“库写失败但基线前移”造成静默丢字节。数据库连接仍复用 `SqliteConnectionFactory`（WAL、`foreign_keys=ON`、`synchronous=FULL`）与 `SqliteWriter` 单消费者。

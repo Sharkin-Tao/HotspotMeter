@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **阶段 7 发布工程已完成（2026-11-15，0.1.0 便携版）；等待用户验收发布包，并决定安装包与 Git 历史清理** |
-| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 v3、仓储/OperationId/时间切分/日汇总；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` 持久化管线 + `TrafficStatsService` + `StatsWindow` + 开机自启/任务栏显示设置 + 中英双语 + 首次启动语言选择；阶段 6 修复见“阶段 6 实际结果”，国际化见“中英双语实际结果”，发布见“阶段 7 实际结果”；`tools/` 下 ApiProbe、MonitorHost、NetworkUsageProbe、ShellZOrderProbe 均不入解决方案 |
-| 未实现 | 周/月汇总（当前今日/最近 7 天/单日）、程序图标提取、逐应用历史数据持久化（按查询日实时读 Windows API）、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装程序/自动更新/代码签名；发布产物为便携 ZIP |
-| 下一次要做的事 | 用户验收 0.1.0 便携 ZIP：解压运行、检查胶囊/统计/托盘/设置/自启；确认是否需要 Inno Setup 安装包与代码签名；确认是否授权清理 Git 历史中的真实 SSID/BSSID/GUID 与未脱敏截图 |
+| 当前阶段 | **Traffic Guard 第一阶段已完成（2026-11-17），等待用户验收；尚未提交** |
+| 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源 + `TrafficGuard`（身份、状态分类、增量计算、采样服务）；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 **v4**、`ProcessInspector`/`DevicePathMapper`/`GuardStore`；App：胶囊 + 托盘 + 设置 + `TrafficHistoryStore` + `TrafficStatsService` + `StatsWindow` + 中英双语 + `GuardUsageSource`/`GuardRuntime` + Guard 启停接线；发布见“阶段 7 实际结果”，Guard 见“Traffic Guard 第一阶段实际结果” |
+| 未实现 | Traffic Guard 的提醒弹窗/风险评分/阈值规则/信任列表 UI/结束进程/完整守护页（后续阶段）；周/月汇总、程序图标提取、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装程序/自动更新/代码签名；发布产物为便携 ZIP |
+| 下一次要做的事 | 用户验收 Traffic Guard 第一阶段：确认逐应用身份的判定口径（尤其系统伪条目列为不确定身份）、30 秒采样与“缺失不记 0”的行为；随后再决定提醒 UI/评分/阈值/信任列表的产品形态。 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -257,6 +257,18 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **文档**：`docs/11_Release_Checklist.md`、`docs/12_Release_Notes.md`、`docs/13_Localization.md`、README 中英，以及 02/04/05/08/09/10 与本文。
 - **限制**：未签名；无安装程序；干净虚拟机/混合 DPI/多显示器/24 h 长稳未验证；开始菜单展开期间仍受 Windows band 6 限制。
 
+### Traffic Guard 第一阶段实际结果（2026-11-17）
+
+- **范围**：只做底层守护引擎与持久化，不做提醒弹窗、风险评分、阈值规则、信任列表 UI、结束进程、守护页面或防火墙；现有胶囊/统计/设置/历史功能保持不变。
+- **采样事实**：WinRT `GetNetworkUsageAsync/GetAttributedNetworkUsageAsync` 在本机实测约 **30 秒**才刷新一次，不是实时计数器。因此采样周期定为 30 秒，**首轮只建基线**，不把“未变化”解释成 0，也不把缺失归属分配给任何程序。
+- **身份**：`AppKey` 为 `exe:{规范化完整路径}`、`pkg:{小写 PFN}` 或 `uncertain:{pid}:{startTicks}:{name}`；同名不同目录不合并；UWP 多进程按 PFN 合并；空归属跳过；设备路径先映射到 DOS 路径再匹配进程；无法确认的伪条目（如系统控制消息）使用 `opaque:{hash}` 且标记 `IdentityCertain=0`。
+- **增量**：按 `(ProfileKey, AppKey)` 保存基线；首见只建基线、重复时间戳跳过、任一方向回退重建、ProfileKey 变化清空、本轮缺失程序删除基线、间隔 >90 秒标 `IntervalGap`；仅正增量写 `GuardTrafficSamples`，写库失败会回滚内存基线，下一轮从旧基线重算。
+- **状态**：前台 PID → `Foreground`；否则有网络增量或可见主窗口 → `Background`；否则 `Idle`。不把“无窗口”直接等同于后台，也不做高频轮询。
+- **数据库**：`SchemaMigrator.SupportedVersion=4`；新增 `GuardSettings`（单行默认 30 秒/保留 30 天）、`GuardAppRules`、`GuardTrafficSamples`、`GuardAlertHistory`（预留）；增量迁移、外键、CHECK、唯一索引与故障回滚均有测试。实际库从 v3 升到 v4，原有会话/快照/日汇总仍在。
+- **运行时**：真实热点下连续采样，规则与样本正常写入；修复了设备路径未映射导致的伪 `exe:e:\device\...` 身份；`opaque:… / IPv6 Control Message` 被正确列为不确定身份；出现多进程聚合样本（`ProcessCount=2/3/10`）与 `Foreground/Background` 样本。
+- **验证**：Debug/Release 构建 0 警告 0 错误；`dotnet test` **454/454**；现有 Stage5 自检通过（startup/taskbar/topmost/stats/monitor、`ui-layout=ok`），app.log 记录 Guard 已启动。
+- **未做**：提醒/评分/阈值/信任 UI、结束进程、守护页、24 小时长稳、真实睡眠/唤醒与网络切换专项人工验收；逐应用历史只在 Guard 采样表中，尚未做展示。
+
 ## 3. 文档索引与阅读顺序
 
 | 文件 | 内容 | 什么时候读 |
@@ -304,6 +316,9 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 26. 发布目录与 ZIP 解压目录均独立运行成功：退出码 0，胶囊 `120,1020.7 / 135.3×44 / dpi1.5`，统计窗 `980×700` 读取真实历史；SQLite 37 会话/2 天/1179 快照保留，说明升级不写安装目录、不丢 `%LOCALAPPDATA%` 数据。
 27. 安全扫描：工作区凭证/个人路径/外联/依赖漏洞均无命中；真实 SSID/BSSID/GUID 已替换为示例值，README 截图已脱敏。Git 历史仍含早期真实网络标识与未脱敏截图，属高风险历史残留，未重写。
 28. 发布环境无 Inno Setup/NSIS，未擅自安装；本轮只交付便携 ZIP，安装包与安装/卸载程序未验证（D-105）。
+29. Traffic Guard 实测：Windows 逐应用归属 API 约 **30 秒**刷新一次；4 MB 下载后约 12 秒内累计值不变，之后一次跳变约 4.1 MB，逐应用合计比网卡总量少约 4.5 MB（未归属差额），探针进程本身未出现在归属列表中。因此不能假设实时，也不可把缺失当 0。
+30. Traffic Guard v4 已实测：真实库 `user_version=4`，原有 52 会话/5439 快照/4 天日汇总仍在，`GuardTrafficSamples`/`GuardAppRules` 正常增长；样本间隔 30 秒，规则首末时间正常。
+31. Traffic Guard 身份实测：设备路径映射缺失时会产生伪 `exe:e:\device\...`；映射后恢复 `exe:c:\...`/`exe:e:\...`/`pkg:...`。无法确认的 `IPv6 Control Message` 已转为 `opaque:{hash}` + `IdentityCertain=0`，不会与真实 EXE 合并。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -371,3 +386,4 @@ dotnet run --project tools/MonitorHost -- --ssid "TestHotspot" --seconds 20 --js
 | 2026-11-14 | 阶段 6：发布前审查与加固（退出死锁、统计按 ProfileKey 过滤、DB 健康分类、synchronous=FULL、统计竞态取消、托盘 TaskbarCreated、原子配置、设置窗夹取、目标热点重试、SQL 注释运行时缺陷）；Debug/Release 390 测试通过；新增 D-093～D-099 |
 | 2026-11-15 | 中英双语：`LanguageCatalog`/`LocalizationService`/`{loc:Tr}`、首次启动语言选择窗、`ui-state.Language`、设置/统计/胶囊/托盘即时切换；408 测试通过；新增 D-100～D-103、docs/11 |
 | 2026-11-15 | 阶段 7 发布：0.1.0 self-contained win-x64 文件夹 + 便携 ZIP + SHA256；发布目录与解压目录运行验证；截图脱敏、SSID/BSSID/GUID 替换、安全扫描；新增 docs/11–13、D-104～D-108；安装包未制作（工具缺失） |
+| 2026-11-17 | Traffic Guard 第一阶段：Core 身份/状态/增量/采样服务，Infrastructure 进程检查与 v4 存储，App WinRT 来源与启停接线；454 测试通过；新增 D-109～D-114；未提交 |

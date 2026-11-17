@@ -126,3 +126,40 @@
 - 决策：SSID → `TestHotspot`，BSSID → `02:00:00:00:00:01`，无线接口 GUID → `11111111-1111-1111-1111-111111111111`；覆盖测试夹具、docs/05、docs/10、PROJECT_CONTEXT 与 `tools/MonitorHost` 示例。
 - 理由：测试不需要真实设备标识，替换不改变断言与验证结论；降低源码泄露面。
 - 验证：替换后 Release 构建 0/0、408/408 测试通过。
+
+## D-109 Traffic Guard 复用现有网卡引擎与 ProfileKey，不新建采集体系
+- 状态：已实现（2026-11-17）
+- 问题：逐程序归属需要与“当前目标热点”关联，但项目已有 `MonitorEngine`、`TrafficHistoryStore.StableProfileKey`、SQLite v3 历史。
+- 决策：Guard 只读 `MonitorSessionService.TargetInterfaceGuid/TargetSsid`，用同一 `StableProfileKey` 生成 32 位 ProfileKey；不打开第二套 WLAN/网卡采集，不写 `ConnectionSessions/TrafficSnapshots/DailyTraffic`。Guard 与 Monitor 通过 App 组合根并行启动，退出先 Guard 后 Monitor。
+- 理由：避免两套计数器、重复累计和会话语义冲突；Guard 失败不影响主监控。
+- 边界：Guard 的 30 秒采样与网卡 1 秒采样相互独立，二者时间戳不要求对齐。
+
+## D-110 逐应用采样周期定为 30 秒，首轮只建基线
+- 状态：已实测并实现（2026-11-17）
+- 事实：WinRT `GetNetworkUsageAsync/GetAttributedNetworkUsageAsync` 实测约 30 秒才刷新；4 MB 下载后 12 秒内数值不变，随后一次跳变约 4.1 MB；逐应用合计比网卡总量少约 4.5 MB。
+- 决策：`GuardSettings.SamplingIntervalSeconds=30`（约束 10–300）；每个 AppKey 首见只记录基线、不产生样本；低于 30 秒的轮询不会带来新数据。
+- 边界：30 秒是平台刷新上限的近似值，不保证每次都有新值；缺失/失败不写 0，长间隔标 `IntervalGap`。
+
+## D-111 AppKey 采用路径/PFN/不确定三层身份，禁止仅按进程名
+- 状态：已实现（2026-11-17）
+- 决策：桌面程序 `exe:{规范化完整路径}`；UWP/MSIX `pkg:{小写 PFN}`；拿不到稳定身份时 `uncertain:{pid}:{startTicks}:{name}`；无法解释的伪归属（如系统控制消息）用 `opaque:{sha256前16}` 且 `IdentityCertain=0`。空 `AttributionId` 直接视为未归属，不分配。
+- 理由：同名不同目录、UWP 多进程、程序重启都必须可区分/可合并；进程名不是身份。
+- 边界：路径大小写/分隔符统一；设备路径先经 `DevicePathMapper` 映射；`uncertain` 与 `opaque` 不跨重启保持稳定聚合。
+
+## D-112 状态判定采用“前台 PID → 可见窗口/增量 → Idle”，不做高频轮询
+- 状态：已实现（2026-11-17）
+- 决策：`Foreground` 仅当前台窗口 PID 命中；否则有正增量或存在可见主窗口为 `Background`；否则 `Idle`。不把“无窗口”直接等同后台。
+- 理由：托盘程序/更新服务可能无窗口但有流量；系统服务也可能无可见窗口。
+- 边界：`ProcessInspector` 每次采样枚举一次进程/窗口，不安装钩子、不轮询；cloaked/tool window/owned 窗口不计为可见。
+
+## D-113 Guard 数据只存“已确认正增量”，写失败回滚内存基线
+- 状态：已实现（2026-11-17）
+- 决策：`GuardTrafficSamples` 每行 `(AppKey,ProfileKey,From,To)` 唯一，只接受正增量；`GuardStore` 在单事务内 upsert 规则 + `ON CONFLICT DO NOTHING`；写失败时 `TrafficGuardService` 用 `RestoreState` 回滚到上一轮基线，下一轮重算。
+- 理由：避免“缺失=0”、重复累计、库失败但基线前移造成的静默丢字节。
+- 边界：未归属流量无 AppKey，不入表、不分摊；`GuardAlertHistory` 只建结构。
+
+## D-114 v4 只做增量迁移，不重建已有表
+- 状态：已实现并实测（2026-11-17）
+- 决策：`SchemaV4` 仅 `CREATE TABLE/INDEX IF NOT EXISTS` + `INSERT OR IGNORE` 种子；`SchemaMigrator.SupportedVersion=4`；迁移在单事务内，失败回滚、`user_version` 不变；不修改 v1–v3 表。
+- 验证：v3→v4 保留原有数据；重复迁移幂等；故障注入回滚后旧库完整；实际用户库升级后 52 会话/5439 快照/4 天日汇总仍在。
+- 边界：`GuardAlertHistory` 仅预留，不写业务；Guard 目前无设置 UI，读取默认值。

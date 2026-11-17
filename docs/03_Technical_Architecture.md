@@ -199,3 +199,26 @@ public interface ISessionRepository
 - **托盘生命周期**：`TrayIconService` 使用 `HWND_MESSAGE` 隐藏窗口监听 `TaskbarCreated`，Explorer 重启后重新设置 `NotifyIcon.Visible`；菜单字体使用 `SystemFonts.MenuFont`，不创建/泄漏 GDI Font。
 - **配置写入**：`WindowStateStore` 先写临时文件再 `File.Replace`；读取失败把原文件改名为 `.bad-*` 并记录日志，避免半写文件被静默当成默认值。
 - **热点重试**：`MonitorSessionService` 在未识别到目标热点时启动 5 秒 `DispatcherTimer` 重试；成功后停止。启动失败会释放半初始化引擎，防止重试被非空引用挡住。
+
+## Traffic Guard 第一阶段组件（2026-11-17）
+
+Guard 与现有网卡流量监控**并行但独立**：网卡引擎负责会话/日汇总，Guard 只负责逐程序归属与增量，二者通过 `ProfileKey`（接口 GUID+SSID 派生）关联，不互相写对方的表。
+
+| 层 | 组件 | 职责 |
+| --- | --- | --- |
+| Core | `TrafficGuard/AppIdentity`、`AppIdentityResolver` | 把归属 Id/进程路径解析为稳定 `AppKey`；桌面路径、PFN、Uncertain、opaque 四类；同名不同路径不合并 |
+| Core | `ProcessStateClassifier` | 根据前台 PID、可见窗口、网络增量判定 `Foreground/Background/Idle`；纯函数可测 |
+| Core | `TrafficDeltaCalculator` | 按 `(ProfileKey,AppKey)` 保存基线，算正增量；首见建基线、重复时间戳跳过、回退/切换/缺失重建；支持 `CaptureState/RestoreState` 回滚 |
+| Core | `TrafficGuardService` | 30 秒 `PeriodicTimer` 采样循环；Start/Pause/Resume/Stop；防重复启动；异常只记诊断，不逃逸；暂停不采样、恢复重建基线 |
+| Core | `IGuardUsageSource/IProcessInspector/IGuardSampleSink/IGuardTargetProvider/IGuardDiagnostics` | 端口接口；Core 不出现 Win32/WinRT/SQLite 类型 |
+| Infrastructure | `TrafficGuard/ProcessInspector` | Toolhelp32 一次枚举 PID/父进程/路径；`QueryFullProcessImageName`；`GetPackageFamilyName`；`EnumWindows` 找可见主窗口（排除 cloaked/tool window/owned）；前台 PID |
+| Infrastructure | `DevicePathMapper` | `\device\harddiskvolumeN\...` → DOS 路径，60 秒缓存；让归属 Id 能与进程路径匹配 |
+| Infrastructure | `GuardStore` | 单事务 upsert 规则 + 插入样本；`INSERT ... ON CONFLICT DO NOTHING` 幂等；设置读取/保存；经 `SqliteWriter` 串行 |
+| App | `GuardUsageSource` | WinRT `GetNetworkUsageAsync` + `GetAttributedNetworkUsageAsync`，按当前目标热点 adapter GUID+SSID 精确选 profile；返回 `IsAvailable`，失败不伪造 0 |
+| App | `GuardRuntime` | 从 `MonitorSessionService` 取目标并派生 `ProfileKey`；诊断写 `app.log`；Guard 启停与主程序解耦 |
+
+**生命周期**：`App.OnStartup` 在监控初始化后启动 Guard（无论当前是否已连热点）；Guard 初始化失败只记录，不影响胶囊/统计/监控。`OnExit` 先停 Guard，再释放 Monitor，最后停 `SqliteWriter`。`GuardSettings.Enabled=0` 时不建采样服务。
+
+**为什么 30 秒**：WinRT 归属 API 实测约 30 秒刷新一次，低于该频率只会重复读到同一累计值；首轮只建基线，避免把历史累计当成本轮流量。高于 90 秒的间隔标 `IntervalGap`，仍按真实差值计算但不假设连续。
+
+**边界**：本阶段不写提醒/评分/信任 UI；`GuardAlertHistory` 只建表；不做进程结束/防火墙；不把未归属流量分摊给任何程序。
