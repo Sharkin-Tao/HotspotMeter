@@ -261,3 +261,5 @@ Guard 与现有网卡流量监控**并行但独立**：网卡引擎负责会话/
 **进程结束的安全边界**：`TerminateAsync` 不接受“上次枚举的结果”作为唯一依据，结束前必须重新枚举并匹配启动时间，专门防止 PID 复用；UWP、服务宿主、共享进程、系统目录、会话 0 和不确定身份默认拒绝。该限制不是缺陷，而是产品安全策略；用户无法在 UI 中绕过。
 
 **为什么 v6 只加列**：v5 已有真实规则/提醒数据，重建会丢处理历史；新增列均有默认值，旧记录读取时回退 `Uncertain/Today/Total/Inherit`，从而兼容升级前数据。
+
+**为什么 v7 只重建一个索引**：v6 的 `CREATE INDEX IF NOT EXISTS` 遇到 v4 同名单列索引时不会替换定义，导致 v6 库实际仍按 `(CreatedAtUtc)` 查询。修正 v6 的 DDL 让新库不再踩坑，同时用 v7 对已发布的 v6 库做增量修复；只 DROP/CREATE `IX_GuardAlerts_CreatedAt`，不重建表、不碰数据。迁移器的事务保证 DROP 与 CREATE 一起提交或一起回滚，测试用 `PRAGMA index_xinfo` 核对列顺序与 `DESC`，而不是只检查索引名。

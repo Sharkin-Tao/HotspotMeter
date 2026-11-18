@@ -26,7 +26,7 @@ public sealed class SchemaV6Tests : IDisposable
             VALUES ('exe:c:\apps\demo.exe', NULL, 1, 100, 200, '2026-11-17T10:00:00.0000000+00:00', 1, 1);
             """);
 
-        Assert.Equal(6, new SchemaMigrator().Migrate(connection));
+        Assert.Equal(6, new SchemaMigrator(SchemaMigrator.DefaultMigrations.Take(6).ToList()).Migrate(connection));
 
         // 旧记录保留，新列取默认值。
         Assert.Equal(1L, Scalar(connection, "SELECT COUNT(*) FROM GuardAppRules;"));

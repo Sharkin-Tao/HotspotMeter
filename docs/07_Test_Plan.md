@@ -343,3 +343,32 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 第三阶段收尾时发现真实用户库已于 19:59 被隔离（malformed），当前库为重建后的 v6 新库，仅 6 会话/5 快照/1 日汇总；原 52 会话/5439 快照历史可能不可恢复。隔离文件：`%LOCALAPPDATA%\HotspotMeter\Database\corrupt\corrupt-20261117-115909-084\hotspotmeter.db`。
 
 因此：v6“旧数据保留”的结论只适用于测试库；不得把自动化迁移通过当成真实历史完整。恢复前应在隔离文件副本上做只读检查/恢复，不覆盖原文件。
+
+## Traffic Guard 索引修复验收记录（2026-11-18）
+
+### 缺陷与修复
+
+- `SchemaV6` 原来用 `CREATE INDEX IF NOT EXISTS IX_GuardAlerts_CreatedAt`；v4 已有同名单列索引 `(CreatedAtUtc)`，SQLite 不比较定义，导致 v6 库仍是旧索引。
+- 修正 v6：先 `DROP INDEX IF EXISTS`，再创建 `(CreatedAtUtc DESC, AlertId DESC)`。
+- 新增 v7：对已升级到 v6 的库执行同样 DROP/CREATE；`SchemaMigrator.SupportedVersion=7`。
+- 不重建表、不改列、不删除或修改提醒记录；只重建这一个索引。
+
+### 自动化测试
+
+- `dotnet build HotspotMeter.sln -c Debug` / `-c Release`：0 警告 0 错误。
+- `dotnet test`：**522/522**，Debug 与 Release 一致；原 515 项无删除、无跳过、无弱化，新增 7 项 v7 用例。
+- 覆盖：
+  - 新库最终得到复合索引。
+  - v5→v6→v7 最终正确，且 v6 自身已不再留下旧单列索引。
+  - 旧 v6 单列索引→v7 替换为复合索引。
+  - v6 已有正确复合索引→v7 正常处理，不产生重复/遗留错误索引。
+  - v7 重复迁移保持幂等；`SchemaV7.Statements` 连续执行两次也安全。
+  - 故障注入：v7 的 DROP/CREATE 与后续失败语句同事务回滚，`user_version` 仍为 6，旧单列索引与提醒数据原样恢复。
+  - 提醒记录逐列比较（`SELECT *` 全部字段）迁移前后不变。
+- 索引结构全部用 `PRAGMA index_xinfo` 断言：恰好两个 key 列，`CreatedAtUtc` seqno 0、`AlertId` seqno 1，两列 `desc=1`；同时检查 `IX_GuardAlerts_Notification` 仍存在、`PRAGMA integrity_check=ok`。
+
+### 边界
+
+- 测试只使用 `TempDirectory` 下的独立 SQLite 文件；未操作当前生产库、原始隔离库或恢复副本。
+- 本阶段未对生产库执行 v7 迁移；生产库仍是 v6 旧索引，需另行确认后再升级。
+- 未修改任何业务表结构或 Guard 提醒内容。

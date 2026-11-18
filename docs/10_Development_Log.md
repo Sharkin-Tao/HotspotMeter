@@ -1181,3 +1181,16 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 隔离文件用 `PRAGMA quick_check` 仍然报 `database disk image is malformed`，暂无法直接读取；根因未确认。最可能是 WAL 模式下备份/恢复只复制了主库文件、没有带 `-wal`，导致恢复后的库不一致。这是本项目自己的操作风险，不是 SQLite 正常升级导致。
 
 处理：保留隔离文件原样，不删除、不覆盖；当前库继续可用。后续如要恢复，应在隔离文件副本上尝试 `sqlite3 .recover` 等只读恢复手段，不直接修改原文件。阶段 3 的“v6 保留旧数据”只在测试库验证，不能表述为真实历史已保住。
+
+## 2026-11-18 Schema v7：修复 Guard 提醒索引迁移
+
+**发现**：在隔离库恢复副本上验证 v6 时发现，`user_version=6` 已写入，但 `IX_GuardAlerts_CreatedAt` 仍是 v4 的单列定义 `(CreatedAtUtc)`。原因是 v6 使用 `CREATE INDEX IF NOT EXISTS`，SQLite 只按名字判断，不会替换 v4 的同名索引；新库也会先经 v4 建出单列索引，再被 v6 跳过。当前生产库同样受影响。
+
+**修复**：
+- `SchemaV6.Statements`：创建同名索引前增加 `DROP INDEX IF EXISTS IX_GuardAlerts_CreatedAt`，再创建 `(CreatedAtUtc DESC, AlertId DESC)`，让新库和 v5→v6 路径一次到位。
+- 新增 `SchemaV7.Statements`：对已发布的 v6 库执行同样的 DROP/CREATE；`SchemaMigrator.DefaultMigrations` 追加 `traffic-guard-alert-index-v7`，`SupportedVersion=7`。
+- 只重建索引，不重建 `GuardAlertHistory`、不增加/删除列、不修改提醒记录。
+
+**测试**：新增 `SchemaV7Tests` 7 项；`SchemaV6Tests` 中原先“迁移到最新版本”的断言改为显式迁移到 v6，避免把 v7 误当成 v6。覆盖新库、v5→v6→v7、旧 v6 单列→v7、v6 复合→v7、重复执行、故障回滚、提醒数据逐列不变；索引一律用 `PRAGMA index_xinfo` 核对列顺序与 `DESC`。`dotnet test` **522/522**（原 515 + 7），Debug/Release 一致；两个配置均 0 警告 0 错误。
+
+**边界**：测试只使用临时独立数据库；未修改当前生产库、原始隔离库或恢复副本，未执行历史数据合并，未 push。生产库仍是 v6 旧索引，需用户确认后再升级。

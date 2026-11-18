@@ -30,8 +30,14 @@ public static class SchemaV6
         ALTER TABLE GuardAlertHistory ADD COLUMN HandlingAction INTEGER NOT NULL DEFAULT 0
             CHECK (HandlingAction BETWEEN 0 AND 5);
         """,
+        // v4 曾创建过同名的单列索引 (CreatedAtUtc)。SQLite 的 CREATE INDEX
+        // IF NOT EXISTS 只按名字判断，不会替换定义；必须先删除旧索引，
+        // 否则 v6 新建库仍会留下错误的单列索引。v7 对已发布的 v6 库做同样修复。
         """
-        CREATE INDEX IF NOT EXISTS IX_GuardAlerts_CreatedAt
+        DROP INDEX IF EXISTS IX_GuardAlerts_CreatedAt;
+        """,
+        """
+        CREATE INDEX IX_GuardAlerts_CreatedAt
             ON GuardAlertHistory (CreatedAtUtc DESC, AlertId DESC);
         """,
         """

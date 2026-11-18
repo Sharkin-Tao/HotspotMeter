@@ -481,6 +481,52 @@ v6 只做增量迁移，目标是在不破坏 v5 规则/提醒的前提下，补
 
 ### 15.4 迁移与兼容
 
-- `SchemaMigrator.SupportedVersion=6`；v6 迁移单事务，失败回滚后 `user_version` 仍为 5，且不会留下半成品列/索引。
+- v6 作为历史版本时 `SupportedVersion=6`；v6 迁移单事务，失败回滚后 `user_version` 仍为 5，且不会留下半成品列/索引。当前支持版本已升到 7，见 §16。
 - v5 旧提醒行读取时：`IdentityKind` 缺省 Uncertain、`Period` 缺省 Today、`PeriodStartUtc=CreatedAtUtc`、上下行为 0、`Metric=Total`、`RuleMode=Inherit`。
 - 不修改 `ConnectionSessions/TrafficSnapshots/DailyTraffic/GuardTrafficSamples/GuardSettings` 既有列。
+
+## 16. Schema v7：修复 Guard 提醒索引（2026-11-18）
+
+### 16.1 问题
+
+v4 创建了单列索引：
+
+```sql
+IX_GuardAlerts_CreatedAt (CreatedAtUtc)
+```
+
+v6 原本使用：
+
+```sql
+CREATE INDEX IF NOT EXISTS IX_GuardAlerts_CreatedAt
+    ON GuardAlertHistory (CreatedAtUtc DESC, AlertId DESC);
+```
+
+SQLite 的 `IF NOT EXISTS` 只按索引名判断，不比较定义。旧库升级到 v6 后，v4 的同名索引被保留，复合列和 `DESC` 都没有生效；新建库同样会先由 v4 建出单列索引，再被 v6 的 `IF NOT EXISTS` 跳过。这是 v6 的 DDL 缺陷，不是数据损坏。
+
+### 16.2 迁移内容
+
+- 修正 `SchemaV6`：在创建同名索引前先 `DROP INDEX IF EXISTS IX_GuardAlerts_CreatedAt`，再创建复合索引；新建库和 v5→v6 路径不再留下旧定义。
+- 新增 `SchemaV7`：对已经升级到 v6 的库执行同样的 `DROP + CREATE`，`SchemaMigrator.SupportedVersion=7`。
+- 不重建 `GuardAlertHistory`、不改列、不删除或修改任何提醒记录；`IX_GuardAlerts_Notification` 与 `IX_GuardAlerts_App_Period` 保持不变。
+- v7 的两条语句先 DROP 再 CREATE，因此同一组语句重复执行也安全；迁移器仍把整个版本放在一个事务内，任一步失败会连同 DROP 一起回滚。
+
+### 16.3 目标索引结构
+
+```sql
+CREATE INDEX IX_GuardAlerts_CreatedAt
+    ON GuardAlertHistory (CreatedAtUtc DESC, AlertId DESC);
+```
+
+必须用 `PRAGMA index_xinfo('IX_GuardAlerts_CreatedAt')` 核对，而不是只查 `sqlite_master` 的名字：
+
+| seqno | 列 | desc | key |
+| ---: | --- | ---: | ---: |
+| 0 | `CreatedAtUtc` | 1 | 1 |
+| 1 | `AlertId` | 1 | 1 |
+
+### 16.4 验证
+
+- 覆盖新库、v5→v6→v7、旧 v6 单列索引→v7、v6 已有复合索引→v7、v7 重复执行、v7 故障回滚、提醒字段逐列不变。
+- 索引检查全部使用 `PRAGMA index_xinfo`，并断言只有两个 key 列、顺序为 `CreatedAtUtc` 后 `AlertId`、两列均为降序。
+- 测试使用独立临时数据库；未修改当前生产库、原始隔离库或任何恢复副本。
