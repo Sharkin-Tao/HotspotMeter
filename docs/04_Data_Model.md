@@ -529,4 +529,14 @@ CREATE INDEX IX_GuardAlerts_CreatedAt
 
 - 覆盖新库、v5→v6→v7、旧 v6 单列索引→v7、v6 已有复合索引→v7、v7 重复执行、v7 故障回滚、提醒字段逐列不变。
 - 索引检查全部使用 `PRAGMA index_xinfo`，并断言只有两个 key 列、顺序为 `CreatedAtUtc` 后 `AlertId`、两列均为降序。
-- 测试使用独立临时数据库；未修改当前生产库、原始隔离库或任何恢复副本。
+- 测试使用独立临时数据库；未修改原始隔离库或任何恢复副本。生产库已于 2026-11-18 单独执行 v7，见 §16.5。
+
+### 16.5 生产库迁移验收（2026-11-18）
+
+- 迁移前：`C:\Users\cc136\AppData\Local\HotspotMeter\Database\hotspotmeter.db`，204,800 B，SHA-256 `DAFFB6B7…51DF8A`，`user_version=6`；6 会话/5 快照/1 日汇总/1 热点/6 映射/0 规则/0 提醒，`quick_check`、`integrity_check` 均 ok。
+- 备份：`migration-v7-20261118-184049\backup\hotspotmeter-v6-pre-v7-20261118-184049.db`，204,800 B，SHA-256 `9504A7CD…E66A49`；使用 SQLite Online Backup API，备份 `quick_check`/`integrity_check` ok，`.dump` 与源库逐行相同。
+- 迁移：调用项目 `DatabaseBootstrapper.Initialize()` 的正常启动迁移路径，`BeforeUserVersion=6` → `AfterUserVersion=7`，未触发隔离。
+- 索引：`PRAGMA index_xinfo('IX_GuardAlerts_CreatedAt')` 返回 `CreatedAtUtc` seqno0 desc=1、`AlertId` seqno1 desc=1；旧单列索引不存在，`IX_GuardAlerts_Notification`/`IX_GuardAlerts_App_Period` 未变。
+- 数据：迁移前后各业务表行数一致；`GuardAlertHistory` rootpage 仍为 45、建表 SQL 未变；`.dump` 唯一差异是 `IX_GuardAlerts_CreatedAt` 的定义。迁移前提醒表本来就是 0 行，只能验证“未被改动”，不能验证既有提醒内容。
+- 程序验证：分别启动统计、守护、设置窗口，均 exit 0、`layout=ok`，无新增崩溃日志；程序正常产生 3 个新会话和 1 个新日汇总。最终 `user_version=7`、9 会话/8 快照/2 日汇总、完整性 ok，库 SHA-256 `F4E7CD23…9D97D`。
+- 完整证据见 `migration-v7-20261118-184049\V7_PRODUCTION_MIGRATION_REPORT.md`；本阶段未修改原始隔离库、`recovered-default.db` 或最终恢复候选，未合并历史数据。

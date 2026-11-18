@@ -370,5 +370,15 @@ $env:HOTSPOTMETER_UI_DUMP_EXIT="1"
 ### 边界
 
 - 测试只使用 `TempDirectory` 下的独立 SQLite 文件；未操作当前生产库、原始隔离库或恢复副本。
-- 本阶段未对生产库执行 v7 迁移；生产库仍是 v6 旧索引，需另行确认后再升级。
+- 本阶段（自动化测试）未对生产库执行迁移；后续已于 2026-11-18 单独完成生产库 v7 迁移，结果见 `docs/04_Data_Model.md` §16.5 与迁移报告，未合并历史数据。
 - 未修改任何业务表结构或 Guard 提醒内容。
+
+## 生产库 v7 迁移验收（2026-11-18）
+
+- 备份：SQLite Online Backup API 生成 `hotspotmeter-v6-pre-v7-20261118-184049.db`，204,800 B，SHA-256 `9504A7CD…E66A49`；备份 `quick_check`/`integrity_check` ok，`.dump` 与源库逐行相同。
+- 迁移：使用项目 `DatabaseBootstrapper.Initialize()` 正常启动路径，`user_version` 6→7；未隔离、未手工拼接 SQL。
+- 索引：`PRAGMA index_xinfo('IX_GuardAlerts_CreatedAt')` 为 `CreatedAtUtc` seqno0 desc=1、`AlertId` seqno1 desc=1；旧单列索引不存在。
+- 数据：迁移前后行数一致（6 会话/5 快照/1 日汇总/1 热点/6 映射/0 规则/0 提醒）；`.dump` 唯一差异是该索引定义；`GuardAlertHistory` rootpage 45 与建表 SQL 未变。迁移前提醒表为 0 行，不能验证既有提醒内容。
+- 程序：统计、守护、设置窗口三次独立启动均 exit 0、`layout=ok`，无新增崩溃日志；程序正常新增 3 会话/1 日汇总，最终 9 会话/8 快照/2 日汇总，`user_version=7`，完整性 ok。
+- 回归：迁移后重新运行 `dotnet test HotspotMeter.sln`，Debug/Release 均 **522/522**、0 失败、0 跳过；本阶段未改代码。
+- 结论：迁移成功，未发现数据丢失、表重建或非预期结构变化；未修改原始隔离库、`recovered-default.db` 或最终恢复候选。

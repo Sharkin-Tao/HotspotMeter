@@ -231,8 +231,8 @@
 - 边界：未逐按钮做真实点击回归；二次确认取消由代码路径保证；不做自动结束、防火墙、评分。
 
 ## D-126 v6 索引 DDL 缺陷用 v7 增量修复
-- 状态：已实现并测试（2026-11-18）
+- 状态：已实现、测试并应用于生产库（2026-11-18）
 - 背景：v4 已建 `IX_GuardAlerts_CreatedAt (CreatedAtUtc)`；v6 用 `CREATE INDEX IF NOT EXISTS` 想改成 `(CreatedAtUtc DESC, AlertId DESC)`，但 SQLite 只按名字判断，旧库和新库都会保留单列定义。
 - 决策：修正 `SchemaV6` 的索引 DDL 为“先 `DROP INDEX IF EXISTS` 再 `CREATE INDEX`”；新增 `SchemaV7` 对已发布的 v6 库执行同样修复；`SchemaMigrator.SupportedVersion=7`。只重建该索引，不重建表、不改列、不动提醒数据。
 - 理由：生产库已经是 v6，只改 v6 无法修复存量库；只加 v7 又会让新库继续经过一次错误定义。两处同时修，所有路径最终收敛到同一结构。
-- 影响：v5→v6→v7、旧 v6→v7、新库都得到复合索引；迁移保持单事务，v7 失败会恢复旧索引与 `user_version=6`。验证必须使用 `PRAGMA index_xinfo` 检查列顺序/方向，不能只查索引名。
+- 影响：v5→v6→v7、旧 v6→v7、新库都得到复合索引；迁移保持单事务，v7 失败会恢复旧索引与 `user_version=6`。验证必须使用 `PRAGMA index_xinfo` 检查列顺序/方向，不能只查索引名。生产库已于 2026-11-18 在一致性备份验证后迁移成功，迁移前后业务表行数不变，`index_xinfo` 两列均 `desc=1`；证据见 `migration-v7-20261118-184049\V7_PRODUCTION_MIGRATION_REPORT.md`。

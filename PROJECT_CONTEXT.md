@@ -11,10 +11,10 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前阶段 | **Schema v7 索引修复已完成（2026-11-18），等待用户验证；已本地独立提交，未 push。当前生产库仍是 v6 旧索引，未执行生产库迁移；真实用户历史因 19:59 数据事故缺失，恢复/合并另议** |
+| 当前阶段 | **生产数据库 v7 迁移已完成（2026-11-18），`user_version=7`，`IX_GuardAlerts_CreatedAt` 已是 `(CreatedAtUtc DESC, AlertId DESC)`；迁移前已做一致性备份并通过完整性校验。等待用户验收；真实用户历史因 19:59 数据事故缺失，恢复/合并另议** |
 | 代码状态 | Core：模型/接口/累积器/恢复判定/归属名称解析/中英语言资源 + `TrafficGuard`（身份、状态分类、增量计算、采样服务/规则/提醒/管理模型、进程安全策略）；Infrastructure：WLAN 检测、计数器、`MonitorEngine`、系统时钟、SQLite 基础设施与业务表 **v7**、`ProcessInspector`/`DevicePathMapper`/`GuardStore`（提醒/管理仓储）/`GuardProcessManager`；App：胶囊 + 托盘 + 设置 + 统计 + `GuardWindow` + 中英双语 + `GuardUsageSource`/`GuardRuntime` + `ToastNotificationSender` + Guard/提醒/管理接线；发布见“阶段 7 实际结果”，Guard 见“Traffic Guard 第一/二/三阶段实际结果” |
 | 未实现 | 流量守护设置/规则/信任列表 UI（规则目前由 GuardWindow 操作）、自动结束进程、风险评分、防火墙/自动阻断；周/月汇总、程序图标提取、用户手动选择目标热点 UI、睡眠/唤醒专项编排、安装程序/自动更新/代码签名；发布产物为便携 ZIP |
-| 下一次要做的事 | 用户确认后，先备份当前生产库及 `-wal`/`-shm`，再启动程序执行 v7 迁移并核对 `IX_GuardAlerts_CreatedAt` 的实际 `index_xinfo`；历史恢复/合并需单独设计，不在本阶段。Traffic Guard 第三阶段的真实提醒验收仍待完成。 |
+| 下一次要做的事 | 用户验收生产库 v7 迁移结果与统计/守护/设置读取；Traffic Guard 第三阶段的真实提醒验收仍待完成；历史恢复/合并需单独设计，不在本阶段。 |
 
 ### 阶段 0 实际验证结果（2026-11-12）
 
@@ -289,7 +289,7 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 - **安全策略**：`GuardProcessPolicy` 为纯函数；会话 0、`%WINDIR%` 下、受保护名单、服务宿主/共享进程、空路径、uncertain/opaque 一律阻止。`GuardProcessManager.TerminateAsync` 在结束前重新枚举，核对 PID + 启动时间（±2 s）+ 路径/PFN，失败按 `AlreadyExited/AccessDenied/IdentityChanged/Blocked/Failed` 返回。
 - **UI**：独立 `GuardWindow` 960×640（最小 900×600），单实例，由托盘“流量守护”打开；历史列表 + 详情 + 进程列表 + 操作区；结束进程使用 `GuardConfirmWindow` 二次确认，展示名称/PID/路径，确认前不做任何终止。
 - **验证**：Debug/Release 构建 0 警告 0 错误；`dotnet test` **515/515**；`HOTSPOTMETER_UI_GUARD` 空态 `layout=ok texts=37`、含真实/合成详情 `texts=42`，窗口 960×640；合成数据已恢复，真实库无污染。
-- **索引修复（2026-11-18）**：v6 的 `CREATE INDEX IF NOT EXISTS` 没有替换 v4 同名单列索引。修正 v6 的 DDL（先 DROP 再 CREATE），并新增 v7 对已发布 v6 库执行同样修复；只重建 `IX_GuardAlerts_CreatedAt`，不动表/数据。测试 522/522，使用 `PRAGMA index_xinfo` 核对两列顺序和 `DESC`；生产库尚未执行 v7。
+- **索引修复（2026-11-18）**：v6 的 `CREATE INDEX IF NOT EXISTS` 没有替换 v4 同名单列索引。修正 v6 的 DDL（先 DROP 再 CREATE），并新增 v7 对已发布 v6 库执行同样修复；只重建 `IX_GuardAlerts_CreatedAt`，不动表/数据。测试 522/522，使用 `PRAGMA index_xinfo` 核对两列顺序和 `DESC`；生产库已于 2026-11-18 完成 v7 迁移（事实 42）。
 - **限制**：未做真实“信任→杀掉进程再观察”的长时间人工验收；UWP/共享进程默认禁止结束，属有意限制；路径失效时只提供明确状态，不猜测新路径；历史记录不提供删除（产品边界）。
 
 ## 3. 文档索引与阅读顺序
@@ -350,8 +350,9 @@ Windows 原生 WPF 工具，监控电脑连接手机 Wi-Fi 热点时的网卡流
 37. 阶段 3 测试数 **515/515**（Debug/Release）；新增 v6 迁移/回滚、异常详情映射与筛选排序、处理记录、规则路径往返、进程安全策略、PID 复用/启动时间不符、系统进程阻止、复制 `ping.exe` 结束成功。
 38. `HOTSPOTMETER_UI_GUARD` 实机抓取：守护窗 960×640（本机 150% DPI 工作区 1280×688），空态 `layout=ok texts=37`，含详情 `texts=42`；筛选显示“全部程序/全部状态”，列表项显示时间/程序/流量/通知状态。
 39. 阶段 3 处理动作已由集成测试验证落库/回读：`RecordHandlingAsync` 写 `HandlingAction/HandledAtUtc`，`OpenedFolder` 不 dismiss，`Trusted/Untrusted/Ignored/Terminated` dismiss；规则保存后 UI 代码统一 `LoadAsync` 重读，避免 UI 与数据库不一致（未逐按钮实机回归）。
-40. **数据事故（2026-11-17 19:59）**：真实用户库被 `DatabaseHealth` 判为 malformed，隔离到 `%LOCALAPPDATA%\HotspotMeter\Database\corrupt\corrupt-20261117-115909-084\hotspotmeter.db`（2,322,432 B）；当前库已重建为 v6，仅 204,800 B、6 会话/5 快照/1 日汇总/0 规则/0 提醒。隔离文件 `PRAGMA quick_check` 仍失败，暂无法读取；原 52 会话/5439 快照可能不可恢复。根因未最终确认，最可能是 WAL 模式下只复制/恢复主库文件而未带 `-wal`；不得把“测试通过”表述为真实历史已保留。
-41. **v6 索引 DDL 缺陷（2026-11-18）**：v4 的 `IX_GuardAlerts_CreatedAt (CreatedAtUtc)` 不会被 v6 的 `CREATE INDEX IF NOT EXISTS` 替换，v6 库实际仍是单列索引。已修正 v6 DDL 并新增 v7 增量修复，`SupportedVersion=7`；只重建该索引，不重建表/不改提醒数据。测试 **522/522**（Debug/Release），全部用 `PRAGMA index_xinfo` 核对 `(CreatedAtUtc DESC, AlertId DESC)` 两列及方向；当前生产库仍未执行 v7。
+40. **数据事故（2026-11-17 19:59）**：真实用户库被 `DatabaseHealth` 判为 malformed，隔离到 `%LOCALAPPDATA%\HotspotMeter\Database\corrupt\corrupt-20261117-115909-084\hotspotmeter.db`（2,322,432 B）；当前库在事故后重建为 v6，2026-11-18 已迁移到 v7。迁移前为 204,800 B、6 会话/5 快照/1 日汇总/0 规则/0 提醒；迁移后经三次程序验证为 9 会话/8 快照/2 日汇总（新增记录是程序正常启动产生的真实会话）。隔离文件 `PRAGMA quick_check` 仍失败，暂无法读取；原 52 会话/5439 快照可能不可恢复。根因未最终确认，最可能是 WAL 模式下只复制/恢复主库文件而未带 `-wal`；不得把“测试通过”表述为真实历史已保留。
+41. **v6 索引 DDL 缺陷（2026-11-18）**：v4 的 `IX_GuardAlerts_CreatedAt (CreatedAtUtc)` 不会被 v6 的 `CREATE INDEX IF NOT EXISTS` 替换，v6 库实际仍是单列索引。已修正 v6 DDL 并新增 v7 增量修复，`SupportedVersion=7`；只重建该索引，不重建表/不改提醒数据。测试 **522/522**（Debug/Release），全部用 `PRAGMA index_xinfo` 核对 `(CreatedAtUtc DESC, AlertId DESC)` 两列及方向；生产库已于 2026-11-18 完成 v7 迁移（事实 42）。
+42. **生产库 v7 迁移（2026-11-18）**：迁移前库 204,800 B、SHA-256 `DAFFB6B7…51DF8A`、`user_version=6`；先用 SQLite Online Backup API 备份到 `migration-v7-20261118-184049\backup\hotspotmeter-v6-pre-v7-20261118-184049.db`（204,800 B，SHA-256 `9504A7CD…E66A49`），备份 `quick_check`/`integrity_check` 均 ok、`.dump` 与源库逐行相同。迁移通过项目 `DatabaseBootstrapper.Initialize()` 的正常启动路径完成，`BeforeUserVersion=6` → `AfterUserVersion=7`，未隔离库；迁移后 `IX_GuardAlerts_CreatedAt` 的 `index_xinfo` 为 `CreatedAtUtc` seqno0 desc=1、`AlertId` seqno1 desc=1，旧单列索引已不存在。迁移前后业务表行数完全一致（6 会话/5 快照/1 日汇总/1 热点/6 映射/0 规则/0 提醒），`GuardAlertHistory` rootpage 仍为 45、建表 SQL 未变；`.dump` 唯一差异就是该索引定义。随后三次独立启动统计/守护/设置窗口均 exit 0、`layout=ok`，无新增崩溃日志；程序正常产生 3 个新会话和 1 个新日汇总，最终 `user_version=7`、9 会话/8 快照/2 日汇总、完整性 ok。迁移前 `GuardAlertHistory` 本来就是 0 行，因此本阶段只能验证“没有提醒被改动”，不能声称“验证了既有提醒内容保持不变”。迁移后重新运行 Debug/Release 全量测试，均 **522/522**、0 失败、0 跳过。
 
 ## 5. 未验证的假设（禁止当结论使用）
 
@@ -423,3 +424,4 @@ dotnet run --project tools/MonitorHost -- --ssid "TestHotspot" --seconds 20 --js
 | 2026-11-17 | Traffic Guard 第二阶段：纯规则引擎（三周期/三口径/信任/忽略/冷却/二次）、`GuardAlertService` 先落库后通知、Windows Toast 未打包注册、v5 增量迁移、中英文案；485 测试通过；新增 D-115～D-120；本地独立提交 |
 | 2026-11-17 | Traffic Guard 第三阶段：v6 详情/处理列与索引、`GuardProcessPolicy`/`GuardProcessManager` 安全结束进程、`GuardWindow`+`GuardConfirmWindow` 历史/详情/操作 UI、托盘入口与中英键；515 测试通过；新增 D-121～D-125 |
 | 2026-11-18 | Schema v7 索引修复：修正 v6 的 `IX_GuardAlerts_CreatedAt` DDL（DROP+CREATE），新增 v7 修复存量 v6 库，`SupportedVersion=7`；只重建索引、不动数据；522 测试通过；新增 D-126；本地独立提交 |
+| 2026-11-18 | 生产库 v7 迁移：一致性备份 SHA `9504A7CD…E66A49` → `user_version=7`；索引 `index_xinfo` 两列均 `DESC`；迁移前后数据/表结构不变，三次程序窗口读取验证通过；迁移后程序正常新增 3 会话/1 日汇总；迁移后 Debug/Release 测试 522/522；无代码变更，未 push |

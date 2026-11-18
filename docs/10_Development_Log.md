@@ -1193,4 +1193,24 @@ CREATE TABLE SchemaInfo (Key TEXT PRIMARY KEY NOT NULL, Value TEXT NOT NULL);
 
 **测试**：新增 `SchemaV7Tests` 7 项；`SchemaV6Tests` 中原先“迁移到最新版本”的断言改为显式迁移到 v6，避免把 v7 误当成 v6。覆盖新库、v5→v6→v7、旧 v6 单列→v7、v6 复合→v7、重复执行、故障回滚、提醒数据逐列不变；索引一律用 `PRAGMA index_xinfo` 核对列顺序与 `DESC`。`dotnet test` **522/522**（原 515 + 7），Debug/Release 一致；两个配置均 0 警告 0 错误。
 
-**边界**：测试只使用临时独立数据库；未修改当前生产库、原始隔离库或恢复副本，未执行历史数据合并，未 push。生产库仍是 v6 旧索引，需用户确认后再升级。
+**边界**：测试只使用临时独立数据库；当时未修改生产库、原始隔离库或恢复副本，未执行历史数据合并，未 push。当时生产库仍为 v6，后续已于同日完成生产库迁移，见下一节。
+
+## 2026-11-18 生产库 Schema v7 迁移与验收
+
+**目标**：把事故后重建的生产库从 `user_version=6` 安全升级到 7，修复 `IX_GuardAlerts_CreatedAt`，并验证现有会话、日汇总、Guard 设置/规则/提醒在迁移和程序启动后仍可读取。
+
+**迁移前**：`%LOCALAPPDATA%\HotspotMeter\Database\hotspotmeter.db`，204,800 B，SHA-256 `DAFFB6B7A342244E643106CF4BF753988280D1A517991F0DCA826CC07A51DF8A`，`user_version=6`、WAL；6 会话/5 快照/1 日汇总/1 热点/6 映射/0 规则/0 提醒；`quick_check`/`integrity_check` ok，外键空；旧索引为单列升序。
+
+**备份**：用 SQLite Online Backup API（`sqlite3 .backup`，源库只读打开）生成 `migration-v7-20261118-184049\backup\hotspotmeter-v6-pre-v7-20261118-184049.db`，204,800 B，SHA-256 `9504A7CD77B448CD9832550F28E4E71EEF0F42C652E370751013DD22EFE66A49`。备份 `user_version=6`、`quick_check`/`integrity_check` ok、外键空，行数与源库一致，`.dump` 与迁移前逐行相同。未覆盖既有 `hotspotmeter.db.stage3-ui-backup`。
+
+**迁移**：临时工具 `migration-v7-20261118-184049\tools\V7Migrate` 引用项目 Infrastructure，调用 `DatabasePaths.CreateDefault()` + `new DatabaseBootstrapper(paths).Initialize()`，走正常启动迁移路径，不手工拼 SQL。输出 `BeforeUserVersion=6`、`AfterUserVersion=7`、`WasQuarantined=False`、`HealthBefore=quick_check: ok`，exit 0。
+
+**迁移后**：`user_version=7`、`journal_mode=wal`、`page_size=4096`、`quick_check`/`integrity_check` ok、外键空；行数与迁移前完全一致（6 会话/5 快照/1 日汇总/1 热点/6 映射/0 规则/0 提醒）。`IX_GuardAlerts_CreatedAt` 的 `index_xinfo` 为 `CreatedAtUtc` seqno0 desc=1、`AlertId` seqno1 desc=1；旧单列索引不存在，`IX_GuardAlerts_Notification`/`IX_GuardAlerts_App_Period` 未变。`GuardAlertHistory` rootpage 仍为 45、建表 SQL 未变；pre/post `.dump` 均为 436 行，唯一差异是该索引定义。
+
+**程序验证**：用 Release 版分别启动统计、守护、设置窗口（`HOTSPOTMETER_UI_STATS`/`_GUARD`/`_SETTINGS` + `HOTSPOTMETER_UI_DUMP_EXIT=1`），三次均 exit 0、`layout=ok`，无新增 `crash-*.log`；统计显示目标热点 `OPPO Find X9` 和 11/17 的 `1.04 MB`，守护显示 0 条异常，设置显示语言/尺寸/自启动等真实配置。三次启动各正常产生 1 个会话，最终 9 会话/8 快照/2 日汇总；11/18 日汇总为 6,715 B 下载/4,736 B 上传、3 会话，与会话明细一致。
+
+**回归**：迁移后重新运行 `dotnet test HotspotMeter.sln`，Debug 与 Release 均 **522/522**、0 失败、0 跳过；本阶段未改代码、Schema 或测试。
+
+**最终状态**：库 204,800 B、`user_version=7`、SHA-256 `F4E7CD23C4F177532C384074C003EE65F0B74151CBBEE02892E0BF3E4BB9D97D`；`quick_check`/`integrity_check` ok、外键 0；`GuardSettings=1`、规则 0、提醒 0、样本 0。迁移前提醒表本来就是 0 行，故只能确认“提醒未被改动”，不能验证“既有提醒内容保持不变”。
+
+**边界**：未修改原始隔离库、`recovered-default.db`、最终恢复候选或 `hotspotmeter.db.stage3-ui-backup`；未执行历史合并；未修改业务代码/Schema/测试；未 push。完整证据见 `migration-v7-20261118-184049\V7_PRODUCTION_MIGRATION_REPORT.md`。
